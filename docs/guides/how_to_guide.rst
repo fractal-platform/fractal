@@ -8,6 +8,7 @@ You’ll learn:
 
 - How to Start a ``PrivateNetwork`` step by step.
 - How to Start a ``TestNetwork`` step by step.
+- How to Start Mining in ``TestNetwork``
 - How to Send a Transaction step by step.
 - How to Deploy a Smart Contract.
 
@@ -19,9 +20,21 @@ You’ll learn:
 
 How to Start a **PrivateNetwork** step by step
 -----------------------------------------------------
-Make sure you have a clean directory which only contains original fractal files. 
+Take macOS as an example:
 
-1. set environment variables
+1. decompress file to current directory
+
+.. code-block:: bash
+
+    $ tar -zxvf fractal-bin.macos.v0.1.0.tar  -C .
+
+2. enter fractal-bin.macos.v0.1.0
+
+.. code-block:: bash
+
+    $ cd fractal-bin.macos.v0.1.0
+
+3. set environment variables
 
 **If your operate on macOS**
 
@@ -40,7 +53,7 @@ Make sure you have a clean directory which only contains original fractal files.
     $ export PATH=$PATH:/path/to/fractal-bin
 
 
-2. make directories to store keys and chaindata
+4. make directories to store keys and chaindata
 
 .. code-block:: bash 
 
@@ -48,7 +61,7 @@ Make sure you have a clean directory which only contains original fractal files.
     $ mkdir data1
     $ mkdir data2
     
-3. generate account , password after ``--pass`` of ``data1/keys`` and ``data2/keys`` should be the same
+5. generate account , password after ``--pass`` of ``data1/keys`` and ``data2/keys`` should be the same
 
 .. code-block:: bash 
 
@@ -66,7 +79,7 @@ Make sure you have a clean directory which only contains original fractal files.
 
 You can see three kind of keys in ``data1/keys`` and ``data2/keys`` directories.
 
-4. generate allocation
+6. generate allocation
 
 ::
 
@@ -76,7 +89,7 @@ You can see three kind of keys in ``data1/keys`` and ``data2/keys`` directories.
 
 ``gstate`` scans current directory to check ``keys`` directory, and generate ``genesis_alloc.json`` file.
 
-5. start nodes, ``data2`` node connects ``data1`` node using ``enode`` argument
+7. start nodes, ``data2`` node connects ``data1`` node using ``enode`` argument
 
 **If your operate on macOS**
 
@@ -101,9 +114,21 @@ Nodes may fail if the ports are in use : ``rpcport`` , ``port`` , ``pprofport`` 
 
 How to Start a **TestNetwork** step by step
 -----------------------------------------------------
-Make sure you have a clean directory which only contains original fractal files. 
+Take macOS as an example:
 
-1. set environment variables
+1. decompress file to current directory
+
+.. code-block:: bash
+
+    $ tar -zxvf fractal-bin.macos.v0.1.0.tar  -C .
+
+2. enter fractal-bin.macos.v0.1.0
+
+.. code-block:: bash
+
+    $ cd fractal-bin.macos.v0.1.0
+
+3. set environment variables
 
 **If your operate on macOS**
 
@@ -121,7 +146,7 @@ Make sure you have a clean directory which only contains original fractal files.
     $ export LD_LIBRARY_PATH=/path/to/fractal-bin
     $ export PATH=$PATH:/path/to/fractal-bin
 
-2. make directories to store keys and chaindata
+4. make directories to store keys and chaindata
 
 .. code-block:: bash 
 
@@ -130,7 +155,7 @@ Make sure you have a clean directory which only contains original fractal files.
 
 You can see three kind of keys in ``data/keys`` directory.
 
-3. start node
+5. start node
 
 **If your operate on macOS**
 
@@ -146,6 +171,8 @@ You can see three kind of keys in ``data/keys`` directory.
 
 
 **WARNNG** Nodes may fail if the ports are in use : ``rpcport`` , ``port`` , ``pprofport`` , you should change them, for example: adding 1 to the port number.
+
+
 
 **NOTE: If you want to start mining for yourself, go on reading, otherwise you can stop here.**
 
