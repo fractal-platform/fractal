@@ -1,38 +1,36 @@
 How To Guides
 =============
 
-In this chapter we will discard scripts because it is not flexible,
-maybe you want to start more fractal nodes, send transaction etc.
-Here we introduce you a few common ``How To``  step-by-step. 
+In this chapter we will dive into more details on Fractal. This chapter introduce commands that give you flexibility and
+help you start more fractal nodes and initiate transaction etc. Here we introduce you a few common ``How To`` step-by-step.
 You’ll learn:
 
 - How to Start a ``PrivateNetwork`` step by step.
 - How to Start a ``TestNetwork`` step by step.
 - How to Start Mining in ``TestNetwork``
-- How to Send a Transaction step by step.
+- How to Initiate a Transaction step by step.
 - How to Deploy a Smart Contract.
 
 | **NOTE**
-| The fractal CLI ``gtool`` is used like this,other commands are the same:
+| The fractal CLI ``gtool`` syntax is shown as follows:
 |    ``$ gtool <main-command> [options...] [arguments...] <sub-command>``
-| It contains ``main-command`` and ``sub-command``.
+| the syntax contains ``main-command`` and ``sub-command``. Other fractal commands follow similar syntax and notation.
 
 
 How to Start a **PrivateNetwork** step by step
 -----------------------------------------------------
-Take macOS as an example:
 
-1. decompress file to current directory
-
-.. code-block:: bash
-
-    $ tar -zxvf fractal-bin.macos.v0.1.0.tar  -C .
-
-2. enter fractal-bin.macos.v0.1.0
+1. unzip downloaded release file
 
 .. code-block:: bash
 
-    $ cd fractal-bin.macos.v0.1.0
+    $ tar -zxvf fractal-bin.<OS>.v0.1.0.tar  -C .
+
+2. cd fractal-bin.<OS>.v0.1.0
+
+.. code-block:: bash
+
+    $ cd fractal-bin.<OS>.v0.1.0
 
 3. set environment variables
 
@@ -40,7 +38,7 @@ Take macOS as an example:
 
 .. code-block:: bash 
 
-    // /path/to/fractal-bin is the path you decompress fractal-bin.macos.v0.1.0.tar.gz 
+    // assume /path/to/fractal-bin is the path you decompress fractal-bin.macos.v0.1.0.tar.gz
     $ export DYLD_LIBRARY_PATH=/path/to/fractal-bin
     $ export PATH=$PATH:/path/to/fractal-bin
 
@@ -48,20 +46,20 @@ Take macOS as an example:
 
 .. code-block:: bash 
 
-    // /path/to/fractal-bin is the path you decompress fractal-bin.ubuntu.v0.1.0.tar.gz
+    // assume /path/to/fractal-bin is the path you decompress fractal-bin.ubuntu.v0.1.0.tar.gz
     $ export LD_LIBRARY_PATH=/path/to/fractal-bin
     $ export PATH=$PATH:/path/to/fractal-bin
 
 
-4. make directories to store keys and chaindata
+4. create directories to store keys and chaindata
 
 .. code-block:: bash 
 
-    //make two directories because we want to transfer balance from A to B , you may want to create more directories as your pleasure.
+    //make at least two directories since we want to transfer balance from A to B.
     $ mkdir data1
     $ mkdir data2
     
-5. generate account , password after ``--pass`` of ``data1/keys`` and ``data2/keys`` should be the same
+5. generate account, password follows ``--pass`` of ``data1/keys`` and ``data2/keys`` should be identical
 
 .. code-block:: bash 
 
@@ -77,7 +75,7 @@ Take macOS as an example:
     New Mining Public Key: 0x866c641dca6652119d2c2b9e06d30c08264ffc94e0bfa9694df54a8989939c9b5f41cb13f6e01373fa2e956ba5a388084024d399bb36ccd8438770a8971432556851804a0ccf2d8f0758aecf7b103802d8673f7c157fdcde39d3febc8ab18c65881b4eeb3f4db30ec0ed41280ea92d15494b604d0f56012706e26cfa8c7713fe
     New Packer Key Address: 0xc402b930dbe2a2fec29dc4699dc0c17f19805949
 
-You can see three kind of keys in ``data1/keys`` and ``data2/keys`` directories.
+Now, you will see three kinds of keys in ``data1/keys`` and ``data2/keys`` directories.
 
 6. generate allocation
 
@@ -87,9 +85,11 @@ You can see three kind of keys in ``data1/keys`` and ``data2/keys`` directories.
     scan folder: data1
     scan folder: data2
 
-``gstate`` scans current directory to check ``keys`` directory, and generate ``genesis_alloc.json`` file.
+``gstate`` scans current directory, finds ``keys`` directory and generates ``genesis_alloc.json`` file.
 
-7. start nodes, ``data2`` node connects ``data1`` node using ``enode`` argument
+7. start nodes
+
+The following command allows ``data2`` node connects ``data1`` node using ``enode`` argument
 
 **If your operate on macOS**
 
@@ -108,25 +108,24 @@ You can see three kind of keys in ``data1/keys`` and ``data2/keys`` directories.
     $ nohup ./gftl --config test.toml --genesisAlloc genesis_alloc.json --rpc --rpcport 8546 --datadir data1 --port 50001 --pprof --pprofport 6061 --verbosity 3 --mine --unlock 666 --bootnodes enode://2b36b97ea62b8ff41011223ff0720db7e468500e2aa3253668f13a9ecd15fbbd5c1ccce8252712c063cd166f1f7be95747574cf6a68d9726a3fad62cdb40f34e@127.0.0.1:30303 > gftl2.log 2>&1 &
 
 
-**WARNNG** The second ``./gtool admin`` command can query ``enode`` which is used in the third command, you must assign ``--rpc`` server to get ``enode``, and you must change the third ``nohup`` command's ``enode`` argument.
-Nodes may fail if the ports are in use : ``rpcport`` , ``port`` , ``pprofport`` , you should change them, for example: adding 1 to the port number.
+**WARNNG** The second command ``./gtool admin`` queries ``enode``, which is later used in the third command. You must assign ``--rpc`` server to reach ``enode``, and you must change the third ``nohup`` command's ``enode`` argument.
+If you see error like port ``rpcport`` , ``port`` , ``pprofport`` is already in use, please change the port number.
 
 
 How to Start a **TestNetwork** step by step
 -----------------------------------------------------
-Take macOS as an example:
 
-1. decompress file to current directory
-
-.. code-block:: bash
-
-    $ tar -zxvf fractal-bin.macos.v0.1.0.tar  -C .
-
-2. enter fractal-bin.macos.v0.1.0
+1. unzip downloaded release file
 
 .. code-block:: bash
 
-    $ cd fractal-bin.macos.v0.1.0
+    $ tar -zxvf fractal-bin.<OS>.v0.1.0.tar  -C .
+
+2. cd fractal-bin.<OS>.v0.1.0
+
+.. code-block:: bash
+
+    $ cd fractal-bin.<OS>.v0.1.0
 
 3. set environment variables
 
@@ -146,14 +145,14 @@ Take macOS as an example:
     $ export LD_LIBRARY_PATH=/path/to/fractal-bin
     $ export PATH=$PATH:/path/to/fractal-bin
 
-4. make directories to store keys and chaindata
+4. create directories to store keys and chaindata
 
 .. code-block:: bash 
 
     $ mkdir -p data/keys/
     
 
-You can see three kind of keys in ``data/keys`` directory.
+Now, you will see three kinds of keys in ``data/keys`` directory.
 
 5. start node
 
@@ -170,21 +169,20 @@ You can see three kind of keys in ``data/keys`` directory.
     $ nohup ./gftl --testnet --rpc --rpcport 8546 --datadir data --port 60001 --pprof --pprofport 6061 --verbosity 3 --mine --unlock 666 > gftl.log 2>&1 &
 
 
-**WARNNG** Nodes may fail if the ports are in use : ``rpcport`` , ``port`` , ``pprofport`` , you should change them, for example: adding 1 to the port number.
+**WARNNG** If you see error like port ``rpcport`` , ``port`` , ``pprofport`` is already in use, please change the port number.
 
 
-
-**NOTE: If you want to start mining for yourself, go on reading, otherwise you can stop here.**
+**NOTE: The next section introduces how to start mining. If you prefer not to do so, you can skip it.**
 
 
 How to Start Mining in Test Network
 -----------------------------------------------------
 
-Step 1. fetch wallet application from https://github.com/fractal-platform/wallet/releases
+Step 1. download wallet application from https://github.com/fractal-platform/wallet/releases
 
 Step 2. create account in wallet.
 
-Step 3. apply stake from official site, or ask your friend to transfer stake to you.
+Step 3. apply stake from official site, or ask someone to transfer stake to you.
 
 Step 4. start local node to join fractal test network.
 
@@ -193,9 +191,9 @@ Step 5. connect to your local node rpc in wallet.
 Step 6. click ``register miner`` in wallet, and you will start mining on local node.
 
 
-How to Send a Transaction step by step
+How to Initiate a Transaction step by step
 -----------------------------------------------------
-Once you have started a **TestNetwork** or **PrivateNetwork**, you can send transactions
+Once you have started a **TestNetwork** or **PrivateNetwork**, you can initiate transactions
 
 .. code-block:: bash 
 
@@ -204,14 +202,15 @@ Once you have started a **TestNetwork** or **PrivateNetwork**, you can send tran
     t=2019-07-02T19:35:12+0800 lvl=info msg="send tx success" hash=0x823e7dde4a4a68fad223beaf47124deeec0534a81a838add639b2a9374ed3ca4
     t=2019-07-02T19:35:14+0800 lvl=info msg="recv tx rsp" from=0xDc19ab8A51Ac78eb99392262e26681d64ba66317 nonce=0 hash=0x823e7dde4a4a68fad223beaf47124deeec0534a81a838add639b2a9374ed3ca4 to=0xC402B930dBe2a2FEc29dC4699DC0C17F19805949 receipt=<nil>
 
-**WARNNG** you need to change ``rpc`` url , if your node address is not ``http://127.0.0.1:8545`` , but if you run ``start_private.sh`` or ``start_testnet.sh`` to startup nodes, the ``rpc`` url is default to 
-``http://127.0.0.1:8545``; the ``to`` argument is the address you want to transfer balance to, you can change it. If you don't know the ``to`` address,
-you can use  ``gtool keys --keys data/keys --pass 666 list`` to find the local address.
+**WARNNG** If you run ``start_private.sh`` or ``start_testnet.sh`` to startup nodes, the ``rpc`` url is by default set to
+``http://127.0.0.1:8545``; hence if your node address is not ``http://127.0.0.1:8545`` you need to change ``rpc`` url accordingly.
+The ``to`` argument is the transfer recipient address, you should change it. If you don't know the ``to`` address,
+you can use  ``gtool keys --keys data/keys --pass 666 list`` to find a local address.
 
 
 How to Deploy a Smart Contract
 -----------------------------------------------------
-Smart Contract steps are not expanded here, go `smart contract <https://fractal-cdt.readthedocs.io/en/v0.1.x/index.html>`_ to get more information.
+Smart Contract steps are introduced here `smart contract <https://fractal-cdt.readthedocs.io/en/v0.1.x/index.html>`_ .
 
 
 
