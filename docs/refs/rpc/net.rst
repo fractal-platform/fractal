@@ -266,3 +266,6 @@ Status: nodeInfo | Code: 200
        "id": "1",
        "result": "2"
    }
+
+.. toctree::
+  :maxdepth: 1

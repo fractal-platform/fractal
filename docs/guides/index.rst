@@ -102,7 +102,7 @@ Run these commands in terminal:
 
     cd ~/fractal-test
     . setenv.sh
-    gftl --testnet3 --rpc --datadir data --unlock [mypassword]
+    gftl --testnet --rpc --datadir data --unlock [mypassword]
 
 .. hint::   [mypassword] is the password when you create your account. Visit `here <../refs/gtool.html>`_ for more information about gtool command line tool.
 
@@ -129,7 +129,7 @@ Deploy miner node
     . setenv.sh
     gtool keys --rpc [rpc address] --keys data/keys --pass [mypassword] --chainid [chainid] regminingkey
 
-.. hint::   [rpc address] is http://127.0.0.1:8545 for local node. [mypassword] is the password when you create your account. [chainid] is 4 for testnet3. Visit `here <../refs/gtool.html>`_ for more information about gtool command line tool.
+.. hint::   [rpc address] is http://127.0.0.1:8545 for local node. [mypassword] is the password when you create your account. [chainid] is 2 for testnet. Visit `here <../refs/gtool.html>`_ for more information about gtool command line tool.
 
 3. Start miner node. Run these commands in terminal: 
 
@@ -137,7 +137,7 @@ Deploy miner node
 
     cd ~/fractal-test
     . setenv.sh
-    gftl --rpc --testnet3 --datadir data --unlock [mypassword] --mine
+    gftl --rpc --testnet --datadir data --unlock [mypassword] --mine
 
 .. hint::   [mypassword] is the password when you create your account. Visit `here <../refs/gtool.html>`_ for more information about gtool command line tool.
 
@@ -153,6 +153,6 @@ Run these commands in terminal:
     . setenv.sh
     gtool tx --rpc [rpc address] --keys data/keys --password [mypassword] --to [account address] --value [number] --chainid [chainid] send
 
-.. hint::   [rpc address] is http://127.0.0.1:8545 for local node. [mypassword] is the password when you create your account. [account address] is a valid account address. [number] is the token amount you want to transfer. [chainid] is 4 for testnet3. Visit `here <../refs/gtool.html>`_ for more information about gtool command line tool.
+.. hint::   [rpc address] is http://127.0.0.1:8545 for local node. [mypassword] is the password when you create your account. [account address] is a valid account address. [number] is the token amount you want to transfer. [chainid] is 2 for testnet. Visit `here <../refs/gtool.html>`_ for more information about gtool command line tool.
 
 
