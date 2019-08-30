@@ -10,53 +10,61 @@ Fractal's Latest Documentation
 Introduction
 ==============
 
-Welcome to The Fractal Deployment Doc, where you can find information and guides to help you learn about Fractal and
-start exploring its features. Fractal is dedicated to providing a high performance and energy-efficient blockchain
-platform, and supporting a wide variety of decentralized applications. The Fractal Chain helps you write
-commercial-scale DApps, it provides secure scalability solutions to handle 1,000x more transactions than
-legacy blockchain with near-instant finality.
+Welcome to The Fractal Documentation, where you can find information and guides to help you learn about Fractal and start exploring its features.   
+
+Fractal is dedicated to providing a high performance and energy-efficient blockchain platform, and supporting a wide variety of decentralized applications. The Fractal Blockchain helps you write commercial-scale dApps, it provides secure scalability solutions to handle serveral thousands transactions with near-instant finality.
 
 Why Fractal Platform
-----------------------
-- `Built-in Security <https://www.fractalblock.com/>`_ Fractal is powered by iChing, a Bitcoin-like proof-of-stake consensus protocol with rigorous security proof and post-quantum guarantee. The protocol enables large-scale networks with millFractal is powered by iChing, a Bitcoin-like proof-of-stake consensus protocol with rigorous security proof and post-quantum guarantee. The protocol enables large-scale networks with millions of miners, thus, guarantees a truly decentralized blockchain.ions of miners, thus, guarantees a truly decentralized blockchain.
-- `Scalability <https://www.fractalblock.com/>`_ On top of the iChing consensus, Fractal has a multi-level of performance amplification for achieving scalability. First, an extended consensus has been developed by utilizing the structure of iChing. Second, iChing is a natural mimic of Bitcoin consensus; as a result, scalability solutions for Bitcoin can be immediately used in Fractal. Altogether, Fractal can securely process 1,000x times more transactions comparing to legacy blockchains.
-- `Compatibility <https://www.fractalblock.com/>`_ Fractal, with modular and composable design, will support a wide range of dApps. Further, regulation will be enforced so that dApps can safely interact and exchange services with each other as well as many dApps on other ecosystems whether they are public or private.
+-------------------------------------------------
+* **Built-in Security**
 
-Who This Deployment Doc Is For
----------------------------
-This doc is for those who wants to start using fractal node for mining, to test deploy a smart contract, manage accounts and
-to send transactions.
+	Fractal is powered by iChing, a Bitcoin-like proof-of-stake consensus protocol with rigorous security proof and post-quantum guarantee.   
 
+* **Decentralized**
 
-How to Use this Doc
---------------------
-Please read the doc in sequence. Later chapters build on concepts from earlier chapters. Although we typically revisit
-the topics later, earlier chapters might not delve into details on a specific topic.
+	Fractal enables large-scale networks with millions of miners, and it's nearly free for new miner to join in.  
 
-You’ll find three chapters in this Doc:
+* **Energy-efficient**
 
-- `Getting Started <guides/getting_started.html>`_  is a quick start to install Fractal, and deploy a node on ``PrivateNetwork`` and ``TestNetwork``.
+  	Proof-of-stake uses much less energy for mining than proof-of-work, thus, miner doesn't need to hire expensive machines, finally, it will be much cheaper for dApp providers and users on Fractal Platform.  
 
-- `How To Guides <guides/how_to_guide.html>`_ looks into details on the bash script from `Getting Started <guides/getting_started.html>`_. It introduces how to start a PrivateNetwork or TestNetwork step by step, how to start mining, send a transaction and how to deploy a smart contract.
+* **Scalability**
 
-- `Usage <guides/usage.html>`_ is the cli command reference page.
+  	Fractal imports network acceleration layer for transaction pack and broadcast, and can process serveral thousands transactions per second.  
+
+* **Smart Contract Support**
+
+  	Fractal embraces WebAssembly for smart contract, since it's much easier to develop and faster to run.  
 
 
+What You Will Learn from This Documentation
+------------------------------------------------------
+From this document, we will learn:
 
-Main entry points:
+	* How to do mining on Fractal Testnet
+	* How to manage account on Fractal Testnet
+	* How to initiate transactions on Fractal Testnet
+
+		* Transfer token
+		* Deploy smart contract
+		* Invoke smart contract
+
+	* How to search account and transaction on Fractal Testnet
+
+In addition, we provide references to fractal command lines and rpc apis.
+
+How to Use this Documentation
+-----------------------------------------------
+There are two parts:
+
+- `Getting Started <guides/index.html>`_  introduces how to install and deploy Fractal Testnet Node, and how to initiate transactions on Fractal Testnet.
+
+- `References <refs/index.html>`_ is the reference to command lines and rpc apis.
 
 .. toctree::
-   :maxdepth: 1
-   :caption: Contents:
+   :maxdepth: 3
+   :caption: Table of Contents:
 
+   guides/index
+   refs/index
 
-   guides/getting_started
-   guides/how_to_guide
-   guides/usage
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
