@@ -7,4 +7,3 @@ Reference Manual
 
    gftl
    gtool
-   rpc

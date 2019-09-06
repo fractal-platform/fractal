@@ -44,14 +44,9 @@ With this document, we can do:
 	* Start mining on Fractal Testnet
 	* Manage your account on Fractal Testnet
 	* Send transactions on Fractal Testnet
-
-		* Transfer token
-		* Deploy smart contract
-		* Invoke smart contract
-
 	* Query account and transactions on Fractal Testnet
 
-Also, we provide the reference documentations of command lines and rpc apis.
+Also, we provide the reference documentations of command lines.
 
 How to Use this Documentation
 -----------------------------------------------
@@ -59,7 +54,7 @@ You’ll find two parts in this documentation:
 
 - `Getting Started <guides/index.html>`_  is the tutorials to show you how to install and deploy Fractal Testnet Node, and do transactions on Fractal Testnet.
 
-- `References <refs/index.html>`_ is the references for command lines and rpc apis.
+- `References <refs/index.html>`_ is the references for command lines.
 
 .. toctree::
    :maxdepth: 3
