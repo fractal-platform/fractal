@@ -29,7 +29,7 @@ Supported Operation Systems:
 
 .. code-block:: bash
 
-    wget https://github.com/fractal-platform/fractal/blob/v0.2.0/scripts/install.sh
+    wget https://raw.githubusercontent.com/fractal-platform/fractal/v0.2.0/scripts/install.sh
     sudo bash install.sh
 
 If you get VERSION in terminal, it means that your installation is OK.
