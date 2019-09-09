@@ -205,9 +205,9 @@ Query Enode Address
 Assume:
     * RPC server address is *http://127.0.0.1:8545*
 
-.. code-block:: bash
+.. code-block:: console
 
-    gtool admin --rpc http://127.0.0.1:8545 enode
+    $ gtool admin --rpc http://127.0.0.1:8545 enode
 
 Query Block with Hash
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -215,9 +215,9 @@ Assume:
     * RPC server address is *http://127.0.0.1:8545*
     * Block hash is *0x2f06e35a6d3b6ef2d9f4abb607082c240ca77e3be9dd23080ee2fc4467411a6f*
 
-.. code-block:: bash
+.. code-block:: console
 
-    gtool block --rpc http://127.0.0.1:8545 --hash 0x2f06e35a6d3b6ef2d9f4abb607082c240ca77e3be9dd23080ee2fc4467411a6f query
+    $ gtool block --rpc http://127.0.0.1:8545 --hash 0x2f06e35a6d3b6ef2d9f4abb607082c240ca77e3be9dd23080ee2fc4467411a6f query
 
 Query Keys in Local
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -225,9 +225,9 @@ Assume:
     * Your key's password is *888*
     * Your key's folder is *data/keys*
 
-.. code-block:: bash
+.. code-block:: console
 
-    gtool keys --keys data/keys --pass 888 list
+    $ gtool keys --keys data/keys --pass 888 list
 
 Query Account Balance
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -235,9 +235,9 @@ Assume:
     * RPC server address is *http://127.0.0.1:8545*
     * Your account address is *0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898*
 
-.. code-block:: bash
+.. code-block:: console
 
-    gtool state --rpc http://127.0.0.1:8545 --addr 0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898 account
+    $ gtool state --rpc http://127.0.0.1:8545 --addr 0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898 account
 
 Send Transaction to Transfer Token
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -249,6 +249,6 @@ Assume:
     * The token amount you want to transfer, is *123456789*
     * You test on Fractal Testnet(chainid: 2)
 
-.. code-block:: bash
+.. code-block:: console
 
-    gtool tx --rpc http://127.0.0.1:8545 --keys data/keys --pass 888 --to 0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898 --value 123456789 --chainid 2 send
+    $ gtool tx --rpc http://127.0.0.1:8545 --keys data/keys --pass 888 --to 0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898 --value 123456789 --chainid 2 send

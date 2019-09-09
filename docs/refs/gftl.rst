@@ -46,11 +46,17 @@ Help
 
 Chain Options
 ------------------------------------
---datadir "data"
+--datadir data
     the folder stores chaindata and keys
 
---testnet/testnet2/testnet3
-    which testnet you want to connect to
+--testnet
+    connect to testnet
+
+--testnet2
+    connect to testnet2
+
+--testnet3
+    connect to testnet3
 
 .. hint:: For most people, choose testnet for your node.
 
@@ -116,9 +122,9 @@ Assume:
     * Your data folder is *data*
     * Your key's password is *888*
 
-.. code-block:: bash
+.. code-block:: console
 
-    gftl --testnet --rpc --datadir data --unlock 888
+    $ gftl --testnet --rpc --datadir data --unlock 888
 
 Start a node with mining on Fractal Testnet
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -127,9 +133,9 @@ Assume:
     * Your key's password is *888*
     * You have registered your mining keys
 
-.. code-block:: bash
+.. code-block:: console
 
-    gftl --testnet --rpc --datadir data --unlock 888 --mine
+    $ gftl --testnet --rpc --datadir data --unlock 888 --mine
 
 Start a node with distinct port on Fractal Testnet
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -138,9 +144,9 @@ Assume:
     * Your key's password is *888*
     * You want to use port 36666 for data transfer
 
-.. code-block:: bash
+.. code-block:: console
 
-    gftl --testnet --port 36666 --rpc --datadir data --unlock 888
+    $ gftl --testnet --port 36666 --rpc --datadir data --unlock 888
 
 Start a node with distinct rpc address/port on Fractal Testnet
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -149,8 +155,8 @@ Assume:
     * Your key's password is *888*
     * You want to use 0.0.0.0:8080 for rpc service
 
-.. code-block:: bash
+.. code-block:: console
 
-    gftl --testnet --rpc --rpcaddr 0.0.0.0 --rpcport 8080 --datadir data --unlock 888
+    $ gftl --testnet --rpc --rpcaddr 0.0.0.0 --rpcport 8080 --datadir data --unlock 888
 
 
