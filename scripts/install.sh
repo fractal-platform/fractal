@@ -24,9 +24,9 @@ if [[ "${unamestr}" == 'Darwin' ]]; then
     echo "installing fractal apps in MacOS"
     filename=fractal-bin.macos.v0.2.0.tgz
     download $filename
-    cp fractal-bin/gftl /usr/local/bin/
-    cp fractal-bin/gtool /usr/local/bin/
-    cp fractal-bin/libwasmlib.dylib /usr/local/lib/
+    sudo cp fractal-bin/gftl /usr/local/bin/
+    sudo cp fractal-bin/gtool /usr/local/bin/
+    sudo cp fractal-bin/libwasmlib.dylib /usr/local/lib/
 else
    OS_NAME=$( cat /etc/os-release | grep ^NAME | cut -d'=' -f2 | sed 's/\"//gI' )
 
@@ -35,25 +35,25 @@ else
          echo "installing fractal apps in Amazon Linux AMI"
          filename=fractal-bin.ami2.v0.2.0.tgz
          download $filename
-         cp fractal-bin/gftl /usr/local/bin/
-         cp fractal-bin/gtool /usr/local/bin/
-         cp fractal-bin/libwasmlib.so /usr/lib64/
+         sudo cp fractal-bin/gftl /usr/local/bin/
+         sudo cp fractal-bin/gtool /usr/local/bin/
+         sudo cp fractal-bin/libwasmlib.so /usr/lib64/
          ;;
       "CentOS Linux")
          echo "installing fractal apps in CentOS Linux"
          filename=fractal-bin.centos.v0.2.0.tgz
          download $filename
-         cp fractal-bin/gftl /usr/local/bin/
-         cp fractal-bin/gtool /usr/local/bin/
-         cp fractal-bin/libwasmlib.so /usr/lib64/
+         sudo cp fractal-bin/gftl /usr/local/bin/
+         sudo cp fractal-bin/gtool /usr/local/bin/
+         sudo cp fractal-bin/libwasmlib.so /usr/lib64/
          ;;
       "Ubuntu")
          echo "installing fractal apps in Ubuntu Linux"
          filename=fractal-bin.ubuntu.v0.2.0.tgz
          download $filename
-         cp fractal-bin/gftl /usr/local/bin/
-         cp fractal-bin/gtool /usr/local/bin/
-         cp fractal-bin/libwasmlib.so /usr/lib/
+         sudo cp fractal-bin/gftl /usr/local/bin/
+         sudo cp fractal-bin/gtool /usr/local/bin/
+         sudo cp fractal-bin/libwasmlib.so /usr/lib/
          ;;
       *)
          printf "\\n\\tUnsupported Linux Distribution. Exiting now.\\n\\n"
@@ -70,3 +70,4 @@ fi
 
 printf "\\n\\tInstall fractal success.\\n\\n"
 exit 0
+
