@@ -8,6 +8,8 @@ function download() {
 	filename=$1
 	fileurl="https://github.com/fractal-platform/fractal/releases/download/v0.2.0/$filename"
 
+    printf "Downloading package from $fileurl\\n"
+
 	rm -f $filename
 	curl -L -O $fileurl
 
@@ -24,9 +26,13 @@ if [[ "${unamestr}" == 'Darwin' ]]; then
     echo "installing fractal apps in MacOS"
     filename=fractal-bin.macos.v0.2.0.tgz
     download $filename
+    sudo mkdir -p /usr/local/bin
+    sudo mkdir -p /usr/local/lib
+    grep -q "/usr/local/bin" /etc/paths || sudo sh -c "echo /usr/local/bin >> /etc/paths"
     sudo cp fractal-bin/gftl /usr/local/bin/
     sudo cp fractal-bin/gtool /usr/local/bin/
     sudo cp fractal-bin/libwasmlib.dylib /usr/local/lib/
+    sudo cp fractal-bin/libgmp.10.dylib /usr/local/lib/
 else
    OS_NAME=$( cat /etc/os-release | grep ^NAME | cut -d'=' -f2 | sed 's/\"//gI' )
 
@@ -59,6 +65,13 @@ else
          printf "\\n\\tUnsupported Linux Distribution. Exiting now.\\n\\n"
          exit 1
    esac
+fi
+
+# check path
+if [[ $PATH != *"/usr/local/bin"* ]]; then
+    export PATH=/usr/local/bin:$PATH
+    printf "\\nYou need to set your PATH enviroment var:\\n"
+    printf "\\texport PATH=/usr/local/bin:\$PATH\\n\\n"
 fi
 
 # check version
