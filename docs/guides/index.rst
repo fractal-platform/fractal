@@ -29,7 +29,7 @@ Supported Operation Systems:
 .. code-block:: console
 
     $ wget https://raw.githubusercontent.com/fractal-platform/fractal/v0.2.0/scripts/install.sh
-    $ sudo bash install.sh
+    $ bash install.sh
     VERSION:
         0.2.0-stable-1d0e690
         Install fractal success.
