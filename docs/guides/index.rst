@@ -28,7 +28,7 @@ Supported Operation Systems:
 
 .. code-block:: console
 
-    $ wget https://raw.githubusercontent.com/fractal-platform/fractal/master/scripts/install.sh
+    $ curl -O https://raw.githubusercontent.com/fractal-platform/fractal/master/scripts/install.sh
     $ bash install.sh
     VERSION:
         0.2.0-stable-1d0e690

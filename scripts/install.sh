@@ -9,7 +9,7 @@ function download() {
 	fileurl="https://github.com/fractal-platform/fractal/releases/download/v0.2.0/$filename"
 
 	rm -f $filename
-	wget $fileurl
+	curl -L -O $fileurl
 
 	if [ "$?" != "0" ];then
     		printf "\\n\\tDownload packages failed. Exiting now.\\n\\n"
