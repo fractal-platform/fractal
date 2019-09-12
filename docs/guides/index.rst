@@ -23,7 +23,7 @@ Supported Operation Systems:
     * Ubuntu Linux(version: 18.04.2 or later)
     * Amazon Linux 2
 
-Hardware Requirements:
+Hardware Minimum Requirements:
 
     * 2 vCPUs/cores
     * 4GB RAM
@@ -40,7 +40,7 @@ Install Steps
     $ curl -O https://raw.githubusercontent.com/fractal-platform/fractal/master/scripts/install.sh
     $ bash install.sh
     VERSION:
-        0.2.0-stable-c544400
+        0.2.0-stable-6d38644
         Install fractal success.
 
 If you get VERSION in terminal, it means that your installation is OK.
