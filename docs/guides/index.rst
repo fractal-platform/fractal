@@ -40,7 +40,7 @@ Install Steps
     $ curl -O https://raw.githubusercontent.com/fractal-platform/fractal/master/scripts/install.sh
     $ bash install.sh
     VERSION:
-        0.2.0-stable-6d38644
+        0.2.0-stable-1328975
         Install fractal success.
 
 If you get VERSION in terminal, it means that your installation is successful.
