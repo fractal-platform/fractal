@@ -1,0 +1,36 @@
+PackerEnable = false
+PackerId = 0
+PackerInfoCacheSize = 16
+TxBatchSendToPackInterval = 200
+TxSaveProcessInterval = 2
+  [ChainConfig]
+  ChainID = 999
+  Greedy = 4
+  TxExecutorType = "wasm"
+  TxSignerType = "eip155"
+  BlockSigFake = false
+  MaxNonceBitLength = 10240
+  CheckPointEnable = false
+  PackerGroupSize = 1
+  [TxPoolConfig]
+  NoLocals = true
+  FakeMode = false
+  [PkgPoolConfig]
+  NoLocals = true
+  FakeMode = false
+  StartCleanTime = 10000
+  CleanPeriod = 2000
+  LeftEleNumEachAddr = 10
+  [Genesis]
+  Round = 15662888829
+  PubKey = [0]
+  Sig = [0]
+  Difficulty = 10000000000000000000
+  [SyncConfig]
+   	MinRegularPeerCount           = 1
+   	MinFastSyncPeerCount          = 1
+   	HeightDiff                    = 30
+   	ShortHashListLength           = 30
+   	Interval                      = 200
+   	CheckMainChainPostBlockLength = 20
+   	CommonPrefixCount             = 3

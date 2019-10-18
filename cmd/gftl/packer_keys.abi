@@ -1,0 +1,122 @@
+{
+    "____comment": "This file was generated with fractal-abigen. DO NOT EDIT ",
+    "version": "ftl::abi/0.2.0",
+    "types": [],
+    "structs": [
+        {
+            "name": "_key",
+            "base": "",
+            "fields": [
+                {
+                    "name": "index",
+                    "type": "uint32"
+                }
+            ]
+        },
+        {
+            "name": "deletekey",
+            "base": "",
+            "fields": [
+                {
+                    "name": "index",
+                    "type": "uint32"
+                }
+            ]
+        },
+        {
+            "name": "packer",
+            "base": "",
+            "fields": [
+                {
+                    "name": "addr",
+                    "type": "address"
+                },
+                {
+                    "name": "pubkey",
+                    "type": "uint8[]"
+                },
+                {
+                    "name": "ip",
+                    "type": "string"
+                }
+            ]
+        },
+        {
+            "name": "packerkey",
+            "base": "",
+            "fields": [
+                {
+                    "name": "key",
+                    "type": "_key"
+                },
+                {
+                    "name": "packerInfo",
+                    "type": "packer"
+                }
+            ]
+        },
+        {
+            "name": "packersize",
+            "base": "",
+            "fields": [
+                {
+                    "name": "key",
+                    "type": "_key"
+                },
+                {
+                    "name": "size",
+                    "type": "uint32"
+                }
+            ]
+        },
+        {
+            "name": "setkey",
+            "base": "",
+            "fields": [
+                {
+                    "name": "index",
+                    "type": "uint32"
+                },
+                {
+                    "name": "ip",
+                    "type": "string"
+                },
+                {
+                    "name": "addr",
+                    "type": "address"
+                },
+                {
+                    "name": "pub_key",
+                    "type": "uint8[]"
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "name": "deletekey",
+            "type": "deletekey"
+        },
+        {
+            "name": "setkey",
+            "type": "setkey"
+        }
+    ],
+    "tables": [
+        {
+            "name": "packerkey",
+            "type": "packerkey",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": []
+        },
+        {
+            "name": "packersize",
+            "type": "packersize",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": []
+        }
+    ],
+    "variants": []
+}
