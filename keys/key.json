@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "id": "7c40670d-3bfb-4aed-aa9b-242a5b88af6e",
+  "address": "76137c78f78815f7560b456f0e1bdd8169116c25",
+  "crypto": {
+    "ciphertext": "fd06c938844d4f0b7a08bb8105690925ef7c164aa1536f4c143fbd9f89e7b319",
+    "cipherparams": {
+      "iv": "a322cd230bf4d65e2e1e58c906b8f33d"
+    },
+    "cipher": "aes-128-ctr",
+    "kdf": "scrypt",
+    "kdfparams": {
+      "dklen": 32,
+      "salt": "4a1d27c39e1ec16557774957e62d83ec1696ec1861b00e56a8f886c98c806809",
+      "n": 8192,
+      "r": 8,
+      "p": 1
+    },
+    "mac": "df6f39407ef15d7bac0150bb6cb1f46ee88306adfd3d49649a18ca42c8b1edd1"
+  },
+  "minerCryptoes": [
+    {
+      "crypto": {
+        "ciphertext": "5a240eb254170ab7956160e2a4b1abedff43fbe97420036f0ae6a5b3f4c374b5",
+        "cipherparams": {
+          "iv": "748a5dc988abb2aa3037e492d75a87ed"
+        },
+        "cipher": "aes-128-ctr",
+        "kdf": "scrypt",
+        "kdfparams": {
+          "dklen": 32,
+          "salt": "9aa8ce43ca6d5d8a488e00e3df22468171292722846ad41147d6bd4b8ac3cd57",
+          "n": 8192,
+          "r": 8,
+          "p": 1
+        },
+        "mac": "7a248e76b1bf3e14b1f81fe130ec2e12980184870ca1a14a5b021d3aff83a021"
+      },
+      "timestamp": 1561621937772
+    }
+  ]
+}

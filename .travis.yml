@@ -1,0 +1,20 @@
+language: go
+
+go: 
+  - 1.11.2
+
+addons:
+  homebrew:
+    packages:
+    - golangci/tap/golangci-lint
+
+os: osx
+osx_image: xcode11.2
+
+install: true
+
+script:
+  - golangci-lint run -D errcheck,structcheck ./...
+  - go build ${gobuild_args} ./...
+  - go test ${gobuild_args} ./...
+
