@@ -1,13 +1,15 @@
 package chain
 
 import (
+	"math/big"
+	"time"
+
+	"github.com/deckarep/golang-set"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/diffculty"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/crypto"
 	"github.com/fractal-platform/fractal/params"
-	"math/big"
-	"time"
 )
 
 func (bc *BlockChain) VerifyBlock(block *types.Block, checkGreedy bool) (types.Blocks, common.Hash, common.Hash, error) {
@@ -205,9 +207,18 @@ func (bc *BlockChain) verifyConfirmBlocks(block *types.Block) (types.Blocks, err
 		}
 	}
 
+	// use a set to check if has duplicated simple hash
+	confirmedBlockSimpleHashSet := mapset.NewSet()
+
 	for _, fullHash := range block.Header.Confirms {
 		// Whether the round of confirmed block is in a correct range(hash)
 		var confirmBlock = bc.GetBlock(fullHash)
+
+		// check if has duplicated simple hash
+		if confirmedBlockSimpleHashSet.Contains(confirmBlock.SimpleHash()) {
+			return nil, ErrConfirmedBlockHasSameSimpleHash
+		}
+
 		if confirmBlock.CompareByRoundAndSimpleHash(parentBlock) >= 0 {
 			return nil, ErrConfirmBlockNotMeetRound
 		}
@@ -225,6 +236,7 @@ func (bc *BlockChain) verifyConfirmBlocks(block *types.Block) (types.Blocks, err
 		}
 
 		confirmBlocks = append(confirmBlocks, confirmBlock)
+		confirmedBlockSimpleHashSet.Add(confirmBlock.SimpleHash())
 	}
 	return confirmBlocks, nil
 }
