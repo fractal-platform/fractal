@@ -6,6 +6,9 @@ package chain
 
 import (
 	"errors"
+	"sync"
+	"sync/atomic"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/config"
 	"github.com/fractal-platform/fractal/core/dbaccessor"
@@ -18,8 +21,6 @@ import (
 	ftl_metrics "github.com/fractal-platform/fractal/utils/metrics"
 	"github.com/hashicorp/golang-lru"
 	"github.com/rcrowley/go-metrics"
-	"sync"
-	"sync/atomic"
 )
 
 var (
@@ -98,6 +99,8 @@ var (
 	ErrInvalidGasUsed = errors.New("invalid gas used")
 
 	ErrTxPackageRelatedBlockNotFound = errors.New("tx package related block not found")
+
+	ErrConfirmedBlockHasSameSimpleHash = errors.New("confirmed block hash same simple hash")
 )
 
 const (
@@ -114,11 +117,11 @@ type BlockChain struct {
 	db          dbwrapper.Database // Low level persistent database to store final content in
 
 	// for block in blockchain
-	genesisBlock     *types.Block
-	checkPoints      *config.CheckPoints // checkPoints
+	genesisBlock *types.Block
+	checkPoints  *config.CheckPoints // checkPoints
 	//fixPoint         atomic.Value        // FixPoint for last fast sync
-	currentBlock     atomic.Value        // Current head block of the block chain
-	blockCache       *lru.Cache          // Cache for the most recent block
+	currentBlock     atomic.Value // Current head block of the block chain
+	blockCache       *lru.Cache   // Cache for the most recent block
 	mainBranchRecord *MainBranchRecord
 
 	// for state in blockchain

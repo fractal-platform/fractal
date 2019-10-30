@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/deckarep/golang-set"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/core/diffculty"
@@ -318,14 +319,25 @@ func (w *worker) resultLoop() {
 				log.Info("Get blocks from round1 to round2", "simpleHash", block.SimpleHash(), "round1", grandParentBlock.Header.Round,
 					"round2", parentBlock.Header.Round, "numbers", len(roundRangeBlocks), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 
+				// use a set to kick out duplicated simple hash
+				confirmedBlockSimpleHashSet := mapset.NewSet()
+
 				for _, confirmBlk := range roundRangeBlocks {
 					// kick out parent block
 					if confirmBlk.FullHash() == parentBlock.FullHash() {
 						continue
 					}
+
+					// kick out duplicated simple hash
+					if confirmedBlockSimpleHashSet.Contains(confirmBlk.SimpleHash()) {
+						log.Warn("Same simpleHash but different fullHash", "simpleHash", confirmBlk.SimpleHash(), "fullHash", confirmBlk.FullHash())
+						continue
+					}
+
 					if check, _ := w.chain.CheckGreedy(confirmBlk, parentBlock, uint64(w.chain.GetGreedy())); check {
 						block.Header.Confirms = append(block.Header.Confirms, confirmBlk.FullHash())
 						confirmedBlocks = append(confirmedBlocks, confirmBlk)
+						confirmedBlockSimpleHashSet.Add(confirmBlk.SimpleHash())
 					}
 				}
 			}
