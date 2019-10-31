@@ -38,7 +38,11 @@ var (
 	}
 	PackerKeyContractOwnerFlag = cli.StringFlag{
 		Name:  "packerKeyOwner",
-		Usage: "The owner address of packer key contract stake",
+		Usage: "The owner address of packer key contract",
+	}
+	TransferRestrictionContractOwnerFlag = cli.StringFlag{
+		Name:  "transferRestrictionOwner",
+		Usage: "The owner address of transfer restriction contract",
 	}
 
 	// for rpc

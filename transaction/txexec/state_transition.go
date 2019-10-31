@@ -140,6 +140,11 @@ func (st *StateTransition) buyGas() error {
 }
 
 func (st *StateTransition) preCheck() error {
+	// check transfer black list
+	if !st.transferIsAllowed() {
+		return ErrTransferIsNotAllowed
+	}
+
 	data := reflect.ValueOf(st.prevStateDb)
 	if !data.IsNil() {
 		newStartNonce := st.prevStateDb.GetNonce(st.msg.From())
@@ -310,4 +315,21 @@ func (st *StateTransition) callWasm() error {
 		}
 	}
 	return nil
+}
+
+func (st *StateTransition) transferIsAllowed() bool {
+	if st.prevStateDb == nil {
+		return true
+	}
+
+	if st.prevStateDb.InTransferWhiteList(st.msg.From()) {
+		return true
+	}
+
+	if st.prevStateDb.InTransferBlackList(*st.msg.To()) {
+		log.Warn("Transfer is not allowed, To address is in the black list", "from", st.msg.From(), "to", *st.msg.To())
+		return false
+	}
+
+	return true
 }
