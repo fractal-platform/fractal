@@ -180,10 +180,6 @@ func (self *StateDB) Empty(addr common.Address) bool {
 	return so == nil || so.empty()
 }
 
-func (self *StateDB) DB() Database {
-	return self.db
-}
-
 // Retrieve the balance from the given address or 0 if object not found
 func (self *StateDB) GetBalance(addr common.Address) *big.Int {
 	stateObject := self.getStateObject(addr)
@@ -304,6 +300,30 @@ func (self *StateDB) GetPackerNumber() uint32 {
 	}
 	number := binary.LittleEndian.Uint32(storageBytes[1:])
 	return number
+}
+
+func (self *StateDB) InTransferWhiteList(addr common.Address) bool {
+	stateObject := self.getStateObject(common.HexToAddress(params.TransferRestrictionContractAddr))
+	if stateObject == nil || stateObject.deleted {
+		log.Error("InTransferWhiteList Can't find system contract", "contractAddr", params.TransferRestrictionContractAddr)
+		return false
+	}
+	table, _ := utils.String2Uint64(params.TransferWhiteListTable)
+
+	storageKey := GetStorageKey(table, addr[:])
+	return stateObject.HasKey(self.db, storageKey) == 1
+}
+
+func (self *StateDB) InTransferBlackList(addr common.Address) bool {
+	stateObject := self.getStateObject(common.HexToAddress(params.TransferRestrictionContractAddr))
+	if stateObject == nil || stateObject.deleted {
+		log.Error("InTransferBlackList Can't find system contract", "contractAddr", params.TransferRestrictionContractAddr)
+		return false
+	}
+	table, _ := utils.String2Uint64(params.TransferBlackListTable)
+
+	storageKey := GetStorageKey(table, addr[:])
+	return stateObject.HasKey(self.db, storageKey) == 1
 }
 
 // Database retrieves the low level database supporting the lower level trie ops.
