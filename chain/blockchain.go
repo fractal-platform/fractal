@@ -314,6 +314,11 @@ func (bc *BlockChain) GetBlockStateChecked(block *types.Block) types.BlockStateC
 	return value
 }
 
+// SetBlockState set state checked flag for block
+func (bc *BlockChain) SetBlockState(block *types.Block, state types.BlockStateCheckedEnum) {
+	dbaccessor.WriteBlockStateCheck(bc.db, block.FullHash(), state)
+}
+
 func (bc *BlockChain) CalcAndCheckState(block *types.Block) bool {
 	return bc.calcAndCheckState(block)
 }

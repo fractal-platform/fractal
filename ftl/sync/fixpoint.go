@@ -8,7 +8,6 @@ package sync
 import (
 	"errors"
 	"github.com/fractal-platform/fractal/common"
-	"github.com/fractal-platform/fractal/core/dbaccessor"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/ftl/downloader"
 	"github.com/fractal-platform/fractal/ftl/network"
@@ -115,7 +114,7 @@ func (s *Synchronizer) doSyncAndCheckFixPoint(peers []peer, bestPeer peer, commo
 			}
 
 			// set state flag as if it is not executed
-			dbaccessor.WriteBlockStateCheck(s.chain.Database(), blocks[i].FullHash(), types.HasBlockStateButNotChecked)
+			s.chain.SetBlockState(blocks[i], types.HasBlockStateButNotChecked)
 
 			select {
 			case <-s.fastSyncQuitCh:

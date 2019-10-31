@@ -30,12 +30,11 @@ func (bc *BlockChain) GetBreakPoint(checkpoint *types.Block, headBlock *types.Bl
 	if blockFrom == nil || blockTo == nil || blockFrom.Header.Height >= blockTo.Header.Height {
 		return nil, nil, errors.New("args error")
 	}
-	_, err := bc.StateAt(blockFrom.Header.StateHash)
-	if err != nil {
+	if bc.GetBlockStateChecked(blockFrom) == types.NoBlockState {
 		return nil, nil, errors.New("below block state not exist")
 	}
-	_, err = bc.StateAt(blockTo.Header.StateHash)
-	if err != nil {
+
+	if bc.GetBlockStateChecked(blockTo) == types.NoBlockState {
 		return nil, nil, errors.New("above block state not exist")
 	}
 
@@ -56,12 +55,7 @@ func (bc *BlockChain) GetBreakPoint(checkpoint *types.Block, headBlock *types.Bl
 				continue
 			}
 
-			_, err = bc.StateAt(blockTo.Header.StateHash)
-			if err != nil {
-				break
-			}
-			_, err = dbaccessor.ReadBloom(bc.db, blockTo.FullHash())
-			if err != nil {
+			if bc.GetBlockStateChecked(currBlock) != types.BlockStateChecked {
 				break
 			}
 			//
@@ -88,12 +82,7 @@ func (bc *BlockChain) GetBreakPoint(checkpoint *types.Block, headBlock *types.Bl
 			break
 		}
 
-		_, err = bc.StateAt(block.Header.StateHash)
-		if err != nil {
-			break
-		}
-		_, err = dbaccessor.ReadBloom(bc.db, block.FullHash())
-		if err != nil {
+		if bc.GetBlockStateChecked(block) != types.BlockStateChecked {
 			break
 		}
 
