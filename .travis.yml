@@ -3,18 +3,46 @@ language: go
 go: 
   - 1.11.2
 
-addons:
-  homebrew:
-    packages:
-    - golangci/tap/golangci-lint
-
-os: osx
-osx_image: xcode11.2
-
 install: true
 
-script:
-  - golangci-lint run -D errcheck,structcheck ./...
-  - go build ${gobuild_args} ./...
-  - go test ${gobuild_args} ./...
+jobs:
+  include:
+    - name: Build and test on MacOS
+      os: osx
+      env:
+        - PKG_FILE=fractal-bin.${TRAVIS_TAG}.macos.tgz
+        - ENV_OS=osx
+      script:
+        - go build ${gobuild_args} ./... && go test ${gobuild_args} ./...
+        - bash scripts/ci/package.sh
+    - name: Build and test on Ubuntu Bionic 18.04
+      dist: bionic
+      env:
+        - PKG_FILE=fractal-bin.${TRAVIS_TAG}.ubuntu.tgz
+        - ENV_OS=ubuntu
+      script:
+        - cp transaction/txexec/libwasmlib.so.ubuntu transaction/txexec/libwasmlib.so
+        - go build ${gobuild_args} ./... && go test ${gobuild_args} ./...
+        - bash scripts/ci/package.sh
+    - name: Code check
+      os: osx
+      addons:
+        homebrew:
+          packages:
+          - golangci/tap/golangci-lint
+          update: true
+      script:
+        - golangci-lint run -D errcheck,structcheck ./...
+
+deploy:
+  provider: releases
+  api_key: "${travis_ci_apikey}"
+  file:
+    - "scripts/install.sh"
+    - "release/${PKG_FILE}"
+  skip_cleanup: true
+  overwrite: true
+  prerelease: true
+  on:
+    tags: true
 
