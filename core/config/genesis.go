@@ -75,10 +75,10 @@ func DefaultMainnetGenesisBlock() *Genesis {
 // DefaultTestnetGenesisBlock returns the test network genesis block.
 func DefaultTestnetGenesisBlock() *Genesis {
 	return &Genesis{
-		Round:      uint64(time.Date(2019, 10, 8, 0, 0, 0, 0, time.UTC).Unix() * params.RoundsPerSecond),
+		Round:      uint64(time.Date(2019, 10, 31, 0, 0, 0, 0, time.UTC).Unix() * params.RoundsPerSecond),
 		PubKey:     []byte{},
 		Sig:        []byte{},
-		Difficulty: new(big.Int).Mul(big.NewInt(1e17), big.NewInt(100)),
+		Difficulty: new(big.Int).Mul(big.NewInt(1e17), big.NewInt(150)),
 		Alloc:      decodePreAlloc(testnetAllocData),
 	}
 }
@@ -86,10 +86,10 @@ func DefaultTestnetGenesisBlock() *Genesis {
 // DefaultTestnet2GenesisBlock returns the test2 network genesis block.
 func DefaultTestnet2GenesisBlock() *Genesis {
 	return &Genesis{
-		Round:      uint64(time.Date(2019, 10, 8, 0, 0, 0, 0, time.UTC).Unix() * params.RoundsPerSecond),
+		Round:      uint64(time.Date(2019, 10, 31, 0, 0, 0, 0, time.UTC).Unix() * params.RoundsPerSecond),
 		PubKey:     []byte{},
 		Sig:        []byte{},
-		Difficulty: new(big.Int).Mul(big.NewInt(1e17), big.NewInt(100)),
+		Difficulty: new(big.Int).Mul(big.NewInt(1e17), big.NewInt(150)),
 		Alloc:      decodePreAlloc(testnet2AllocData),
 	}
 }
@@ -97,10 +97,10 @@ func DefaultTestnet2GenesisBlock() *Genesis {
 // DefaultTestnet3GenesisBlock returns the test3 network genesis block.
 func DefaultTestnet3GenesisBlock() *Genesis {
 	return &Genesis{
-		Round:      uint64(time.Date(2019, 10, 8, 0, 0, 0, 0, time.UTC).Unix() * params.RoundsPerSecond),
+		Round:      uint64(time.Date(2019, 10, 31, 0, 0, 0, 0, time.UTC).Unix() * params.RoundsPerSecond),
 		PubKey:     []byte{},
 		Sig:        []byte{},
-		Difficulty: new(big.Int).Mul(big.NewInt(1e17), big.NewInt(100)),
+		Difficulty: new(big.Int).Mul(big.NewInt(1e17), big.NewInt(150)),
 		Alloc:      decodePreAlloc(testnet3AllocData),
 	}
 }
