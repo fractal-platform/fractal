@@ -25,6 +25,7 @@ var (
 	ErrOutOfGas                  = errors.New("out of gas")
 	ErrCodeStoreOutOfGas         = errors.New("contract creation code storage out of gas")
 	ErrWasmExec                  = errors.New("wasm exec return error")
+	ErrTransferIsNotAllowed      = errors.New("transfer is not allowed")
 )
 
 type TxExecutor interface {

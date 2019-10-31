@@ -107,7 +107,7 @@ func DbHasKey(callbackParamKey uint64, address common.Address, table uint64, key
 	stateObject := s.GetOrNewStateObject(address)
 	if stateObject != nil {
 		storageKey := state.GetStorageKey(table, key)
-		return stateObject.HasKey(s.DB(), storageKey)
+		return stateObject.HasKey(s.Database(), storageKey)
 	}
 	return 0
 }
@@ -122,7 +122,7 @@ func DbRemoveKey(callbackParamKey uint64, address common.Address, table uint64, 
 	stateObject := s.GetOrNewStateObject(address)
 	if stateObject != nil {
 		storageKey := state.GetStorageKey(table, key)
-		stateObject.RemoveKey(s.DB(), storageKey)
+		stateObject.RemoveKey(s.Database(), storageKey)
 	}
 }
 
@@ -135,7 +135,7 @@ func DbHasTable(callbackParamKey uint64, address common.Address, table uint64) i
 
 	stateObject := s.GetOrNewStateObject(address)
 	if stateObject != nil {
-		return stateObject.HasTable(s.DB(), table)
+		return stateObject.HasTable(s.Database(), table)
 	}
 	return 0
 }
@@ -149,7 +149,7 @@ func DbRemoveTable(callbackParamKey uint64, address common.Address, table uint64
 
 	stateObject := s.GetOrNewStateObject(address)
 	if stateObject != nil {
-		stateObject.RemoveTable(s.DB(), table)
+		stateObject.RemoveTable(s.Database(), table)
 	}
 }
 
