@@ -459,7 +459,6 @@ type blockchain interface {
 	GetCheckPoints() *config.CheckPoints
 	GetBreakPoint(checkpoint *types.Block, headBlock *types.Block) (*types.Block, *types.Block, error)
 	SetBlockState(block *types.Block, state types.BlockStateCheckedEnum)
-
 }
 
 type miner interface {
