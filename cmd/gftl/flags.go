@@ -80,6 +80,13 @@ var (
 		Value: "",
 	}
 
+	// unlock check point private key
+	unlockCheckPointPriKeyFlag = cli.StringFlag{
+		Name:  "checkpointkeypass",
+		Usage: "The password to use for unlock the check point signer's private key",
+		Value: "",
+	}
+
 	// RPC settings
 	rpcEnabledFlag = cli.BoolFlag{
 		Name:  "rpc",

@@ -4,14 +4,6 @@
 // Fractal implements the Fractal full node service.
 package api
 
-/*
-#cgo CFLAGS: -I../../transaction/txexec
-#cgo LDFLAGS: -L../../transaction/txexec -lwasmlib
-#include <stdlib.h>
-
-void gen_action_bytes(unsigned char *abiBytes, int abiLength, unsigned char *funcNameBytes, int funcNameLength, unsigned char *jsonBytes, int jsonLength, void** actionBytes, int* actionLength);
-*/
-import "C"
 import (
 	"context"
 	"errors"
@@ -21,7 +13,6 @@ import (
 	"math/rand"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/fractal-platform/fractal/chain"
 	"github.com/fractal-platform/fractal/common"
@@ -489,44 +480,6 @@ func (args *SendTxArgs) setDefaults(ftl fractal) error {
 	}
 	return nil
 }
-
-//func (args *SendTxArgs) toTransaction() *types.Transaction {
-//	var input []byte
-//	if args.Data != nil {
-//		input = *args.Data
-//	}
-//	if args.To == nil {
-//		return types.NewContractCreation(uint64(*args.Nonce), (*big.Int)(args.Value), uint64(*args.Gas), (*big.Int)(args.GasPrice), input, true)
-//	}
-//	return types.NewTransaction(uint64(*args.Nonce), *args.To, (*big.Int)(args.Value), uint64(*args.Gas), (*big.Int)(args.GasPrice), input, true)
-//}
-
-func (s *TxPoolAPI) EncodeAction(abi hexutil.Bytes, action string, args string) hexutil.Bytes {
-	abiLength := len(abi)
-	log.Info("EncodeAction", "abi", abi, "abiLength", abiLength)
-
-	funcBytes := []byte(action)
-	funcLength := len(funcBytes)
-
-	argsBytes := []byte(args)
-	argsLength := len(argsBytes)
-
-	var actionBytes unsafe.Pointer
-	var actionLength C.int
-	var actionSlice []byte
-	C.gen_action_bytes((*C.uchar)(&abi[0]), C.int(abiLength), (*C.uchar)(&funcBytes[0]), C.int(funcLength), (*C.uchar)(&argsBytes[0]), C.int(argsLength), &actionBytes, (*C.int)(&actionLength))
-	log.Info("EncodeAction", "actionLength", actionLength)
-	for i := C.int(0); i < actionLength; i++ {
-		ptr := (*C.uchar)(unsafe.Pointer(uintptr(actionBytes) + uintptr(i)))
-		actionSlice = append(actionSlice, byte(*ptr))
-	}
-	C.free(actionBytes)
-	return actionSlice
-}
-
-//func (s *TxPoolAPI) DecodeAction(action []byte) (abi hexutil.Bytes, actionName string, args string) {
-//	return
-//}
 
 type CallResult struct {
 	Logs    []*types.Log

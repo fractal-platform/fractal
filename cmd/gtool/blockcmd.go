@@ -1,6 +1,5 @@
 package main
 
-import "C"
 import (
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"

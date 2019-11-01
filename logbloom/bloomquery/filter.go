@@ -29,10 +29,17 @@ const (
 	bloomRetrievalWait = time.Duration(0)
 )
 
+var (
+	errGetIndexedLog           = errors.New("get indexed log error")
+	errGetUnIndexedLog         = errors.New("get unIndexed log error")
+	errGetIndexAndUnIndexedLog = errors.New("get indexed log and unIndexed log error")
+)
+
 type Backend interface {
 	ChainDb() dbwrapper.Database
 	GetBlock(ctx context.Context, fullHash common.Hash) *types.Block
-	GetMainBranchBlock(height uint64) (*types.BlockHeader, error)
+	CurrentBlock(ctx context.Context) *types.Block
+	GetMainBranchBlock(height uint64) (*types.Block, error)
 	GetLogs(ctx context.Context, blockHash common.Hash) [][]*types.Log
 	BloomRequestsReceiver() chan chan *Retrieval
 }
@@ -105,7 +112,7 @@ func newFilter(backend Backend, addresses []common.Address, topics [][]common.Ha
 
 // Logs searches the blockchain for matching log entries, returning all from the
 // first block that contains matches, updating the start of the filter accordingly.
-func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
+func (f *Filter) Logs(ctx context.Context, stableDistance uint64) ([]*types.Log, error) {
 	// If we're doing singleton block filtering, execute and return
 	if f.block != (common.Hash{}) {
 		block := f.backend.GetBlock(ctx, f.block)
@@ -122,12 +129,17 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 
 	end := uint64(f.end)
 	if f.end == -1 {
-		end = logbloom.GetBloomList().GetLast()
+		end = f.backend.CurrentBlock(ctx).Header.Height
 	}
+
+	if begin == 0 && end == 0 {
+		return nil, nil
+	}
+
 	// Gather all indexed logs, and finish with non indexed ones
 	var (
-		logs []*types.Log
-		err  error
+		logs                                []*types.Log
+		err, indexedLogErr, unIndexedLogErr error
 	)
 
 	var sectionIdInDb []uint64
@@ -145,11 +157,25 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 		}
 	}
 
-	logs, _ = f.indexedLogs(ctx, sectionIdInDb, begin, end)
-	log.Info("Logs: indexedLogs", "len", len(logs))
-	rest, err := f.unIndexedLogs(ctx, blockHeightNotInDb)
-	log.Info("Logs: unIndexedLogs", "len", len(rest))
+	logs, indexedLogErr = f.indexedLogs(ctx, sectionIdInDb, begin, end)
+	log.Info("Logs: indexedLogs", "len", len(logs), "err", indexedLogErr)
+	rest, unIndexedLogErr := f.unIndexedLogs(ctx, blockHeightNotInDb, stableDistance)
+	log.Info("Logs: unIndexedLogs", "len", len(rest), "err", unIndexedLogErr)
 	logs = append(logs, rest...)
+
+	if indexedLogErr == nil {
+		if unIndexedLogErr == nil {
+			err = nil
+		} else {
+			err = errGetUnIndexedLog
+		}
+	} else {
+		if unIndexedLogErr == nil {
+			err = errGetIndexedLog
+		} else {
+			err = errGetIndexAndUnIndexedLog
+		}
+	}
 	return logs, err
 }
 
@@ -179,16 +205,16 @@ func (f *Filter) indexedLogs(ctx context.Context, sectionIds []uint64, begin, en
 				return logs, err
 			}
 
-			blockHeader, err := f.backend.GetMainBranchBlock(height)
+			block, err := f.backend.GetMainBranchBlock(height)
 			if err != nil {
 				return logs, err
 			}
 
-			if blockHeader == nil || blockHeader.Height != height {
+			if block == nil || block.Header.Height != height {
 				return logs, errors.New("indexedLogs: find wrong block")
 			}
 
-			found := f.checkMatches(ctx, blockHeader.FullHash())
+			found := f.checkMatches(ctx, block.FullHash())
 			logs = append(logs, found...)
 
 		case <-ctx.Done():
@@ -199,12 +225,16 @@ func (f *Filter) indexedLogs(ctx context.Context, sectionIds []uint64, begin, en
 
 // unIndexedLogs returns the logs matching the filter criteria based on raw block
 // iteration and bloom matching.
-func (f *Filter) unIndexedLogs(ctx context.Context, blockHeights []uint64) ([]*types.Log, error) {
+func (f *Filter) unIndexedLogs(ctx context.Context, blockHeights []uint64, stableDistance uint64) ([]*types.Log, error) {
 	var logs []*types.Log
 
 	bloomInfoList := logbloom.GetBloomList()
-	headHeight := bloomInfoList.GetLast()
-	stableHeight := headHeight - params.ConfirmHeightDistance
+	headHeight := f.backend.CurrentBlock(ctx).Header.Height
+	if headHeight < stableDistance {
+		return logs, nil
+	}
+
+	stableHeight := headHeight - stableDistance
 
 	for _, height := range blockHeights {
 		if height > stableHeight {
@@ -216,12 +246,14 @@ func (f *Filter) unIndexedLogs(ctx context.Context, blockHeights []uint64) ([]*t
 
 		bloomInfoList.Mu.RLock()
 		if sectionBloom, exist := bloomInfoList.BListMap[sectionId]; exist {
-			oneBloom := sectionBloom.Blooms[uint16(bloomId)]
-			if oneBloom.BlockFullHash != (common.Hash{}) {
-				if block := f.backend.GetBlock(ctx, oneBloom.BlockFullHash); block != nil {
-					found, _ := f.blockLogs(ctx, block)
-					if found != nil {
-						logs = append(logs, found...)
+			if sectionBloom.CheckBitFlag(uint16(bloomId)) {
+				oneBloom := sectionBloom.Blooms[uint16(bloomId)]
+				if oneBloom.BlockFullHash != (common.Hash{}) {
+					if block := f.backend.GetBlock(ctx, oneBloom.BlockFullHash); block != nil {
+						found, _ := f.blockLogs(ctx, block)
+						if found != nil {
+							logs = append(logs, found...)
+						}
 					}
 				}
 			}

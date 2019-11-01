@@ -3,6 +3,10 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"math/big"
+	"os"
+	"path"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/core/types"
@@ -14,9 +18,6 @@ import (
 	"github.com/fractal-platform/fractal/utils/log"
 	"github.com/pkg/errors"
 	"gopkg.in/urfave/cli.v1"
-	"math/big"
-	"os"
-	"path"
 )
 
 var (
@@ -89,6 +90,15 @@ var (
 				Name:   "export",
 				Usage:  "Export Private Key",
 				Action: exportPrivateKey,
+				Flags: []cli.Flag{
+					KeyFolderFlag,
+					PasswordFlag,
+				},
+			},
+			{
+				Name:   "newcheckpointkey",
+				Usage:  "New Check Point Key",
+				Action: newCheckPointKey,
 				Flags: []cli.Flag{
 					KeyFolderFlag,
 					PasswordFlag,
@@ -311,6 +321,34 @@ func exportPrivateKey(ctx *cli.Context) error {
 		fmt.Printf("Account Address: %s\n", hexutil.Encode(accountKey.Address[:]))
 	}
 	fmt.Printf("Account Private Key: %s\n", hexutil.Encode(accountKey.PrivKey.Marshal()))
+
+	return nil
+}
+
+func newCheckPointKey(ctx *cli.Context) error {
+	initLogger(ctx)
+
+	folder := ctx.GlobalString(KeyFolderFlag.Name)
+	password := ctx.GlobalString(PasswordFlag.Name)
+
+	if folder == "" {
+		return errors.New("key folder must be set")
+	}
+	if password == "" {
+		return errors.New("password must be set")
+	}
+
+	// create if not exists
+	if _, err := os.Stat(folder); os.IsNotExist(err) {
+		os.MkdirAll(folder, 0755)
+	}
+
+	checkPointKeyFile := path.Join(folder, "check_point_key.json")
+	priKey := keys.CreateCheckPointKey(checkPointKeyFile, password)
+	pubKey := priKey.Public()
+	pubKeyByte := pubKey.Marshal()
+	fmt.Println("Create Check Point Key Ok")
+	fmt.Printf("Check Point Public Key: %s\n", hexutil.Encode(pubKeyByte))
 
 	return nil
 }

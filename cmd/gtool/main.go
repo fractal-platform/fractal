@@ -6,11 +6,12 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"sort"
+
 	"github.com/fractal-platform/fractal/cmd/utils"
 	"github.com/fractal-platform/fractal/utils/log"
 	"gopkg.in/urfave/cli.v1"
-	"os"
-	"sort"
 )
 
 var (

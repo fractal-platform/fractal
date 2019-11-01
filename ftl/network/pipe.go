@@ -5,10 +5,11 @@
 package network
 
 import (
-	"github.com/fractal-platform/fractal/common"
-	"github.com/fractal-platform/fractal/core/types"
 	"sync"
 	"time"
+
+	"github.com/fractal-platform/fractal/common"
+	"github.com/fractal-platform/fractal/core/types"
 )
 
 type taskType int

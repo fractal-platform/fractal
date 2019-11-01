@@ -7,8 +7,8 @@ package api
 import (
 	"context"
 	"errors"
-	"github.com/fractal-platform/fractal/chain"
 
+	"github.com/fractal-platform/fractal/chain"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/core/types"

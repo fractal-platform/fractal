@@ -4,9 +4,10 @@ package types
 
 import (
 	"encoding/json"
+	"math/big"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
-	"math/big"
 )
 
 var _ = (*pkgDataMarshaling)(nil)

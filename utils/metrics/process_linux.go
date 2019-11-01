@@ -1,14 +1,14 @@
 package metrics
 
 import (
-	"os"
-	"fmt"
 	"bufio"
-	"io"
-	"time"
-	"strings"
-	"strconv"
 	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 )
 
 func CollectProcessStats(stats *ProcessStats) error {
@@ -92,4 +92,3 @@ func readDiskStats(stats *ProcessStats) error {
 	}
 	return nil
 }
-

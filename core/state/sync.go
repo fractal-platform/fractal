@@ -2,6 +2,7 @@ package state
 
 import (
 	"bytes"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/dbwrapper"
 	"github.com/fractal-platform/fractal/rlp"

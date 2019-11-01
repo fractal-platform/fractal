@@ -21,13 +21,13 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"github.com/xtaci/kcp-go"
 	"net"
 	"time"
 
 	"github.com/fractal-platform/fractal/p2p/discover"
 	"github.com/fractal-platform/fractal/p2p/netutil"
 	"github.com/fractal-platform/fractal/utils/log"
+	"github.com/xtaci/kcp-go"
 )
 
 const (
@@ -68,7 +68,7 @@ func (t TCPDialer) Dial(dest *discover.Node) (net.Conn, error) {
 
 // KCPDialer implements the NodeDialer interface by using a net.Dialer to
 // create UDP connections to nodes in the network
-type KCPDialer struct {}
+type KCPDialer struct{}
 
 // Dial creates a KCP connection to the node
 func (t KCPDialer) Dial(dest *discover.Node) (net.Conn, error) {

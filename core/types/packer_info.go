@@ -34,7 +34,7 @@ func NewPackerInfoMap() *PackerInfoMap {
 type PackerInfoMapCache struct {
 	cache *lru.Cache
 
-	mu sync.RWMutex
+	mu sync.Mutex
 }
 
 func NewPackerInfoMapCache(cacheSize uint8) (*PackerInfoMapCache, error) {
@@ -49,8 +49,8 @@ func NewPackerInfoMapCache(cacheSize uint8) (*PackerInfoMapCache, error) {
 }
 
 func (ps *PackerInfoMapCache) Get(blockHash common.Hash) (*PackerInfoMap, error) {
-	ps.mu.RLock()
-	defer ps.mu.RUnlock()
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
 
 	if p, ok := ps.cache.Get(blockHash); ok {
 		return p.(*PackerInfoMap), nil

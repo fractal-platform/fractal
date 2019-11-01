@@ -7,9 +7,9 @@ package api
 import (
 	"context"
 	"errors"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
-	"github.com/fractal-platform/fractal/core/dbaccessor"
 	"github.com/fractal-platform/fractal/core/state"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/rpc"
@@ -45,13 +45,11 @@ func (s *BlockChainAPI) GetBlock(hash common.Hash) *types.Block {
 }
 
 func (s *BlockChainAPI) GetBlockByHeight(height hexutil.Uint64) *types.Block {
-	header, err := s.ftl.BlockChain().GetMainBranchBlock(uint64(height))
+	block, err := s.ftl.BlockChain().GetMainBranchBlock(uint64(height))
 	if err != nil {
 		log.Info("BlockChainAPI GetBlockByHeight error", "err", err)
 		return nil
 	}
-	block := types.NewBlockWithHeader(header)
-	block.Body = *dbaccessor.ReadBlockBody(s.ftl.ChainDb(), header.FullHash())
 	return block
 }
 

@@ -7,6 +7,7 @@ package api
 import (
 	"errors"
 	"fmt"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/keys"
 	"github.com/fractal-platform/fractal/p2p"

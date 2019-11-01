@@ -22,6 +22,7 @@ type blockChain interface {
 
 	HasBlock(hash common.Hash) bool
 	GetBlock(hash common.Hash) *types.Block
+	CalcuAccHash(block *types.Block) error
 	StateAt(root common.Hash) (*state.StateDB, error)
 	GetStateBeforeCacheHeight(block *types.Block, cacheHeight uint8) (*state.StateDB, *types.Block, bool)
 	GetPreBalanceAndPubkey(block *types.Block, address common.Address) (uint64, []byte, error)

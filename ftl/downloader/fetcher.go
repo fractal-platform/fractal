@@ -1,9 +1,10 @@
 package downloader
 
 import (
-	"github.com/fractal-platform/fractal/utils/log"
 	"sync"
 	"time"
+
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 // common part for block_fetcher&package_fetcher

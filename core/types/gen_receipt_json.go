@@ -5,6 +5,7 @@ package types
 import (
 	"encoding/json"
 	"errors"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 )

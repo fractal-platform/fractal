@@ -2,7 +2,6 @@ package bloomstorage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync/atomic"
 
@@ -17,19 +16,43 @@ import (
 	"github.com/fractal-platform/fractal/utils/log"
 )
 
-var ErrCannotFindSection = errors.New("cannot find section")
-
 // blockChain interface is used for connecting the indexer to a blockchain.
 type blockChain interface {
 	GetBlock(hash common.Hash) *types.Block
 	CurrentBlock() *types.Block
 	SubscribeBlockExecutedEvent(ch chan<- types.BlockExecutedEvent) event.Subscription
-	GetMainBranchBlock(height uint64) (*types.BlockHeader, error)
+	GetMainBranchBlock(height uint64) (*types.Block, error)
+	GetCheckPoint() *types.CheckPoint
 }
 
-type SectionBuildNotify struct {
-	SectionNum   uint64
-	SectionBloom []logbloom.OneBloom
+type sectionUpdateTypeEnum byte
+
+const (
+	build sectionUpdateTypeEnum = iota
+	bloomReplace
+	clear
+)
+
+type sectionUpdateNotify struct {
+	updateType sectionUpdateTypeEnum
+
+	// could be sectionBuildNotify, sectionBloomReplaceNotify or sectionClearNotify
+	data interface{}
+}
+
+type sectionBuildNotify struct {
+	sectionNum   uint64
+	sectionBloom []logbloom.OneBloom
+}
+
+type sectionBloomReplaceNotify struct {
+	sectionNum  uint64
+	bloomHeight uint64
+	bloomBit    *types.Bloom
+}
+
+type sectionClearNotify struct {
+	sectionNum uint64
 }
 
 // BloomIndexer does a post-processing job for equally sized sections of the
@@ -40,9 +63,11 @@ type BloomIndexer struct {
 
 	blockExecutedHead *types.Block
 
-	active    uint32                  // Flag whether the event loop was started
-	update    chan SectionBuildNotify // Notification channel that headers should be processed
-	quit      chan chan error         // Quit channel to tear down running goroutines
+	bloomInsertFeed event.Feed
+
+	active    uint32                   // Flag whether the event loop was started
+	update    chan sectionUpdateNotify // Notification channel that section should be processed
+	quit      chan chan error          // Quit channel to tear down running goroutines
 	ctx       context.Context
 	ctxCancel func()
 }
@@ -53,7 +78,7 @@ func NewBloomIndexer(chainDb dbwrapper.Database) *BloomIndexer {
 	c := &BloomIndexer{
 		chainDb: chainDb,
 		writer:  NewSectionWriter(chainDb),
-		update:  make(chan SectionBuildNotify, 1),
+		update:  make(chan sectionUpdateNotify, 16),
 		quit:    make(chan chan error),
 	}
 	// Initialize database dependent fields and start the updater
@@ -78,22 +103,36 @@ func (b *BloomIndexer) Start(chain blockChain) {
 	// when system restart
 	if currentBlock := chain.CurrentBlock(); currentBlock != nil {
 		currentSecId := currentBlock.Header.Height / params.BloomBitsSize
-		// TODO: secId start from check point, not 0
-		for secId := uint64(0); secId <= currentSecId; secId++ {
+
+		// get the first section id
+		var secBegin uint64
+		checkPoint := chain.GetCheckPoint()
+		if checkPoint.Height == 0 {
+			secBegin = 0
+		} else {
+			secBegin = checkPoint.Height/params.BloomBitsSize + 1
+		}
+
+		for secId := secBegin; secId <= currentSecId; secId++ {
 			// To see if this section has been saved
 			saved := dbaccessor.ReadBloomSectionSavedFlag(b.chainDb, secId)
 			if saved {
+				if block, err := chain.GetMainBranchBlock(secId*params.BloomBitsSize + params.BloomBitsSize - 1); err == nil {
+					if b.blockExecutedHead.Header.Height < block.Header.Height {
+						b.blockExecutedHead = block
+					}
+				}
 				continue
 			}
 
 			// If the entire section has not been saved, then check if each item(a block) in it has been executed. If the block has been executed, put it into the buffer.
 			sectionHeadHeight := secId * params.BloomBitsSize
 			for i := sectionHeadHeight; i <= currentBlock.Header.Height && i < sectionHeadHeight+params.BloomBitsSize; i++ {
-				if blockHeader, err := chain.GetMainBranchBlock(i); err == nil && dbaccessor.ReadBlockStateCheck(b.chainDb, blockHeader.FullHash()) == types.BlockStateChecked {
-					if b.blockExecutedHead.Header.Height < blockHeader.Height {
-						b.blockExecutedHead = chain.GetBlock(blockHeader.FullHash())
+				if block, err := chain.GetMainBranchBlock(i); err == nil && dbaccessor.ReadBlockStateCheck(b.chainDb, block.FullHash()) == types.BlockStateChecked {
+					if b.blockExecutedHead.Header.Height < block.Header.Height {
+						b.blockExecutedHead = block
 					}
-					bloomInfoList.InsertBlockBloom(b.chainDb, blockHeader, nil)
+					bloomInfoList.InsertBlockBloom(b.chainDb, &block.Header, nil)
 				}
 			}
 			b.sendSaveBloomMapChan(bloomInfoList, secId)
@@ -170,51 +209,13 @@ func (b *BloomIndexer) eventLoop(events chan types.BlockExecutedEvent, sub event
 			if blockReceivedPath == types.BlockFastSync {
 				log.Info("eventLoop: BlockFastSync", "blockHeight", block.Header.Height)
 
-				lastBlock := blockChain.GetBlock(block.Header.ParentFullHash)
-				if lastBlock == nil {
-					log.Error("eventLoop: Can't find last block", "thisBlockHash", block.FullHash(), "lastBlockHash", block.Header.ParentFullHash)
-					panic("eventLoop: Can't find last block")
-				}
-				if dbaccessor.ReadBlockStateCheck(b.chainDb, lastBlock.FullHash()) == types.BlockStateChecked {
-					if b.blockExecutedHead.Header.Height < block.Header.Height {
-						b.blockExecutedHead = block
+				// TODO: if is fixPoint, clear the later bloom data, and set 'blockExecutedHead'
 
-						bloomInfoList.Mu.Lock()
-						currentSection := bloomInfoList.InsertBlockBloom(b.chainDb, &block.Header, block.Bloom())
-						b.sendSaveBloomMapChan(bloomInfoList, currentSection)
-						bloomInfoList.Mu.Unlock()
-					} else {
-						// currentHeader.Header.Height >= block.Header.Height
-						blockSectionId := block.Header.Height / params.BloomBitsSize
-						if dbaccessor.ReadBloomSectionSavedFlag(b.chainDb, blockSectionId) {
-							// replace db
-							thisBloom := block.Bloom()
-							if thisBloom == nil {
-								thisBloom, _ = dbaccessor.ReadBloom(b.chainDb, block.FullHash())
-							}
-							replaceErr := b.writer.ReplaceSectionBit(blockSectionId, block.Header.Height, thisBloom)
-							if replaceErr != nil {
-								log.Error("eventLoop: Can't replace section bit", "section", blockSectionId, "height", block.Header.Height, "err", replaceErr)
-							}
-						} else {
-							// replace cache map
-							bloomInfoList.Mu.Lock()
-							currentSection := bloomInfoList.InsertBlockBloom(b.chainDb, &block.Header, block.Bloom())
-							b.sendSaveBloomMapChan(bloomInfoList, currentSection)
-							bloomInfoList.Mu.Unlock()
-						}
-					}
-				} else { // must be the fix point
-					if b.blockExecutedHead.Header.Height < block.Header.Height {
-						b.blockExecutedHead = block
-
-						bloomInfoList.Mu.Lock()
-						currentSection := bloomInfoList.InsertBlockBloom(b.chainDb, &block.Header, block.Bloom())
-						b.sendSaveBloomMapChan(bloomInfoList, currentSection)
-						bloomInfoList.Mu.Unlock()
-					}
-					// TODO: else: clear later sections
+				if b.blockExecutedHead.Header.Height <= block.Header.Height {
+					b.blockExecutedHead = block
 				}
+
+				b.insertBloom(block, bloomInfoList)
 				continue
 			}
 
@@ -224,70 +225,34 @@ func (b *BloomIndexer) eventLoop(events chan types.BlockExecutedEvent, sub event
 				b.blockExecutedHead = block
 				log.Info("eventLoop: main chain head grows", "currentHeight", b.blockExecutedHead.Header.Height)
 
-				bloomInfoList.Mu.Lock()
-				currentSection := bloomInfoList.InsertBlockBloom(b.chainDb, &block.Header, block.Bloom())
-				b.sendSaveBloomMapChan(bloomInfoList, currentSection)
-				bloomInfoList.Mu.Unlock()
+				b.insertBloom(block, bloomInfoList)
 			} else if chain.IsReOrg(block, b.blockExecutedHead) {
-				// reorg will not occur when fast sync
-				reorg := dbaccessor.FindReorgChain(b.chainDb, &b.blockExecutedHead.Header, &block.Header)
-				if len(reorg) <= 1 {
-					log.Error("eventLoop: reorg happen. find common ancestor error") // should not happen
+				// reOrg will not occur when fast sync
+				reOrg := dbaccessor.FindReorgChain(b.chainDb, &b.blockExecutedHead.Header, &block.Header)
+				if len(reOrg) <= 1 {
+					log.Error("eventLoop: reOrg happen. find common ancestor error") // should not happen
 					continue                                                         // at least have two element (common ancestor,  and another block which is more preferred than original main chain head)
 				}
-				b.blockExecutedHead = block
-				headBlockCachedBloom := b.blockExecutedHead.Bloom()
 
-				commonAncestor := reorg[0]
+				commonAncestor := reOrg[0]
 				commonAncestorHeight := commonAncestor.Height
-				commonAncestorSection := commonAncestorHeight / params.BloomBitsSize
 
-				log.Info("eventLoop: reorg happen", "commonAncestorHeight", commonAncestorHeight, "blockHeight", block.Header.Height)
+				log.Info("eventLoop: reOrg happen", "commonAncestorHeight", commonAncestorHeight, "blockHeight", block.Header.Height)
 
-				bloomInfoList.Mu.Lock()
-				// 1. clear the later sections
-				for i := commonAncestorSection + 1; ; i++ {
-					if _, exist := bloomInfoList.BListMap[i]; exist {
-						log.Info("eventLoop:  clear section in map", "section", i)
-						delete(bloomInfoList.BListMap, i)
-					} else if dbaccessor.ReadBloomSectionSavedFlag(b.chainDb, i) {
-						log.Info("eventLoop: clear section in db", "section", i)
-						b.writer.ClearSection(i)
-					} else {
-						break
+				b.clearHigherBlooms(commonAncestorHeight+1, b.blockExecutedHead.Header.Height, bloomInfoList, blockChain)
+
+				b.blockExecutedHead = block
+
+				// reOrg[0] is commonAncestor, don't need to insert
+				for i := 1; i < len(reOrg)-1; i++ {
+					newBlock := blockChain.GetBlock(reOrg[i].FullHash())
+					if newBlock != nil {
+						b.insertBloom(newBlock, bloomInfoList)
 					}
 				}
 
-				// 2. reset the first section
-				var leftBlock []*types.BlockHeader
-				if dbaccessor.ReadBloomSectionSavedFlag(b.chainDb, commonAncestorSection) {
-					var blooms []logbloom.OneBloom
-					blooms, leftBlock = bloomInfoList.ResetBlockBloomDb(b.chainDb, reorg, headBlockCachedBloom)
-					b.update <- SectionBuildNotify{
-						SectionNum:   commonAncestorSection,
-						SectionBloom: blooms,
-					}
-				} else {
-					leftBlock = bloomInfoList.ResetBlockBloomMap(b.chainDb, reorg, headBlockCachedBloom)
-					b.sendSaveBloomMapChan(bloomInfoList, commonAncestorSection)
-				}
-
-				// 3. set the later sections
-				for len(leftBlock) >= int(params.BloomBitsSize) {
-					currentSection := bloomInfoList.InsertBlockSectionBloom(b.chainDb, leftBlock[0:params.BloomBitsSize])
-					b.sendSaveBloomMapChan(bloomInfoList, currentSection)
-					leftBlock = leftBlock[params.BloomBitsSize:]
-				}
-				for i := 0; i < len(leftBlock)-1; i++ {
-					bloomInfoList.InsertBlockBloom(b.chainDb, leftBlock[i], nil)
-				}
-
-				// 4. set the last block bloom
-				if len(leftBlock) > 0 {
-					bloomInfoList.InsertBlockBloom(b.chainDb, &block.Header, block.Bloom())
-				}
-
-				bloomInfoList.Mu.Unlock()
+				// set the last block bloom
+				b.insertBloom(block, bloomInfoList)
 			}
 		}
 	}
@@ -304,11 +269,25 @@ func (b *BloomIndexer) updateLoop() {
 			return
 
 		case res := <-b.update:
-			// Process the newly defined section in the background
-			err := b.writer.WriteSection(res.SectionNum, res.SectionBloom)
-			if err != nil {
-				// If processing failed, don't retry until further notification
-				log.Error("Section processing failed", "section", res.SectionNum, "err", err)
+			switch res.updateType {
+			case build:
+				data := res.data.(sectionBuildNotify)
+				// Process the newly defined section in the background
+				err := b.writer.WriteSection(data.sectionNum, data.sectionBloom)
+				if err != nil {
+					// If processing failed, don't retry until further notification
+					log.Error("Section processing failed", "section", data.sectionNum, "err", err)
+				}
+			case bloomReplace:
+				data := res.data.(sectionBloomReplaceNotify)
+				err := b.writer.ReplaceSectionBit(data.sectionNum, data.bloomHeight, data.bloomBit)
+				if err != nil {
+					log.Error("Can't replace section bit", "section", data.sectionNum, "height", data.bloomHeight, "err", err)
+				}
+			case clear:
+				data := res.data.(sectionClearNotify)
+				b.writer.ClearSection(data.sectionNum)
+
 			}
 		}
 	}
@@ -320,20 +299,88 @@ func (b *BloomIndexer) sendSaveBloomMapChan(bloomInfoList *logbloom.BloomList, c
 	if currentSectionBloom != nil && currentSectionBloom.IsFull() {
 		if currentSection >= 1 {
 			if prevSectionBloom, exist := bloomInfoList.BListMap[currentSection-1]; exist && prevSectionBloom.IsFull() {
-				b.update <- SectionBuildNotify{
-					SectionNum:   currentSection - 1,
-					SectionBloom: prevSectionBloom.Blooms[:],
-				}
+				b.update <- sectionUpdateNotify{build, sectionBuildNotify{
+					sectionNum:   currentSection - 1,
+					sectionBloom: prevSectionBloom.Blooms[:],
+				}}
 				delete(bloomInfoList.BListMap, currentSection-1)
 			}
 		}
 
 		if nextSectionBloom, exist := bloomInfoList.BListMap[currentSection+1]; (exist && nextSectionBloom.IsFull()) || dbaccessor.ReadBloomSectionSavedFlag(b.chainDb, currentSection+1) {
-			b.update <- SectionBuildNotify{
-				SectionNum:   currentSection,
-				SectionBloom: currentSectionBloom.Blooms[:],
-			}
+			b.update <- sectionUpdateNotify{build, sectionBuildNotify{
+				sectionNum:   currentSection,
+				sectionBloom: currentSectionBloom.Blooms[:],
+			}}
 			delete(bloomInfoList.BListMap, currentSection)
 		}
 	}
+}
+
+func (b *BloomIndexer) insertBloom(block *types.Block, bloomInfoList *logbloom.BloomList) {
+	blockSectionId := block.Header.Height / params.BloomBitsSize
+	if dbaccessor.ReadBloomSectionSavedFlag(b.chainDb, blockSectionId) {
+		// replace db
+		thisBloom := block.Bloom()
+		if thisBloom == nil {
+			thisBloom, _ = dbaccessor.ReadBloom(b.chainDb, block.FullHash())
+		}
+		b.update <- sectionUpdateNotify{bloomReplace, sectionBloomReplaceNotify{
+			sectionNum:  blockSectionId,
+			bloomHeight: block.Header.Height,
+			bloomBit:    thisBloom,
+		}}
+	} else {
+		// replace or insert to cache map
+		bloomInfoList.Mu.Lock()
+		currentSection := bloomInfoList.InsertBlockBloom(b.chainDb, &block.Header, block.Bloom())
+		b.sendSaveBloomMapChan(bloomInfoList, currentSection)
+		bloomInfoList.Mu.Unlock()
+	}
+
+	b.bloomInsertFeed.Send(types.BloomInsertEvent{Block: block})
+}
+
+// include the input fromHeight
+func (b *BloomIndexer) clearHigherBlooms(fromHeight uint64, oldHeadHeight uint64, bloomInfoList *logbloom.BloomList, chain blockChain) {
+	bloomInfoList.Mu.Lock()
+	defer bloomInfoList.Mu.Unlock()
+
+	sectionId := fromHeight / params.BloomBitsSize
+
+	// 1. clear the later sections
+	oldHeadSectionId := oldHeadHeight / params.BloomBitsSize
+	for i := sectionId + 1; i <= oldHeadSectionId; i++ {
+		if _, exist := bloomInfoList.BListMap[i]; exist {
+			log.Info("eventLoop: clear section in map", "section", i)
+			delete(bloomInfoList.BListMap, i)
+		} else if dbaccessor.ReadBloomSectionSavedFlag(b.chainDb, i) {
+			log.Info("eventLoop: clear section in db", "section", i)
+			b.update <- sectionUpdateNotify{clear, sectionClearNotify{sectionNum: i}}
+		}
+	}
+
+	// 2. clear the current section
+	if dbaccessor.ReadBloomSectionSavedFlag(b.chainDb, sectionId) {
+		log.Info("eventLoop: clear current section in db", "section", sectionId)
+		b.update <- sectionUpdateNotify{clear, sectionClearNotify{sectionNum: sectionId}}
+
+		for i := sectionId * params.BloomBitsSize; i < fromHeight; i++ {
+			block, err := chain.GetMainBranchBlock(i)
+			if err != nil {
+				log.Error("clearHigherBlooms: can't get main branch block", "height", i, "error", err)
+				continue
+			}
+			bloomInfoList.InsertBlockBloom(b.chainDb, &block.Header, nil)
+		}
+	} else {
+		log.Info("eventLoop: del bloom in map", "section", sectionId)
+		for i := fromHeight; i <= oldHeadHeight && i < sectionId*params.BloomBitsSize+params.BloomBitsSize; i++ {
+			bloomInfoList.DelBlockBloom(i)
+		}
+	}
+}
+
+func (b *BloomIndexer) SubscribeInsertBloomEvent(ch chan<- types.BloomInsertEvent) event.Subscription {
+	return b.bloomInsertFeed.Subscribe(ch)
 }

@@ -56,12 +56,12 @@ func NewTxInChainProcessor(chain *BlockChain, processPeriod int) *TxInChainProce
 		// has history data:
 
 		// 1. make sure the history data is right
-		if mainBlockHeader, err := p.chain.GetMainBranchBlock(savedHeight); err == nil {
-			if mainBlockHeader.FullHash() != savedHash {
+		if mainBlock, err := p.chain.GetMainBranchBlock(savedHeight); err == nil {
+			if mainBlock.FullHash() != savedHash {
 				// wrong history data
 				log.Info("NewTxInChainProcessor: wrong history data, need to recover")
 				old := p.chain.GetBlock(savedHash)
-				chain := dbaccessor.FindReorgChain(p.chain.db, &old.Header, mainBlockHeader)
+				chain := dbaccessor.FindReorgChain(p.chain.db, &old.Header, &mainBlock.Header)
 				if len(chain) <= 1 {
 					log.Error("NewTxInChainProcessor: unexpected error, recorg chain length < 1")
 					panic("NewTxInChainProcessor: unexpected error, recorg chain length < 1")
@@ -81,7 +81,7 @@ func NewTxInChainProcessor(chain *BlockChain, processPeriod int) *TxInChainProce
 						panic("NewTxInChainProcessor: unexpected error, execBlock failed1")
 					}
 				}
-				dbaccessor.WriteTxSavedBlockHeightAndHash(p.chain.db, mainBlockHeader.Height, mainBlockHeader.FullHash())
+				dbaccessor.WriteTxSavedBlockHeightAndHash(p.chain.db, mainBlock.Header.Height, mainBlock.FullHash())
 			}
 		}
 
@@ -159,11 +159,11 @@ func (p *TxInChainProcessor) loop(ticker *time.Ticker) {
 		var savedHash common.Hash
 		var err error
 		if savedHeight, savedHash, err = dbaccessor.ReadTxSavedBlockHeightAndHash(p.chain.db); err == nil {
-			if mainBlockHeader, err := p.chain.GetMainBranchBlock(savedHeight); err == nil {
-				if mainBlockHeader.FullHash() != savedHash {
+			if mainBlock, err := p.chain.GetMainBranchBlock(savedHeight); err == nil {
+				if mainBlock.FullHash() != savedHash {
 					log.Info("TxInChainProcessor loop: reorg happe", "savedHeight", savedHeight)
 					old := p.chain.GetBlock(savedHash)
-					chain := dbaccessor.FindReorgChain(p.chain.db, &old.Header, mainBlockHeader)
+					chain := dbaccessor.FindReorgChain(p.chain.db, &old.Header, &mainBlock.Header)
 					if len(chain) <= 1 {
 						panic("recorg chain length < 1")
 					}
@@ -182,7 +182,7 @@ func (p *TxInChainProcessor) loop(ticker *time.Ticker) {
 							panic("TxInChainProcessor loop: unexpected error, execBlock failed")
 						}
 					}
-					dbaccessor.WriteTxSavedBlockHeightAndHash(p.chain.db, mainBlockHeader.Height, mainBlockHeader.FullHash())
+					dbaccessor.WriteTxSavedBlockHeightAndHash(p.chain.db, mainBlock.Header.Height, mainBlock.FullHash())
 				}
 			}
 		}

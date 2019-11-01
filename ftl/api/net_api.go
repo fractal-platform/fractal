@@ -7,6 +7,7 @@ package api
 import (
 	"context"
 	"fmt"
+
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/p2p"
 	"github.com/fractal-platform/fractal/rpc"

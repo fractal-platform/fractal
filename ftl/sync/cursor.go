@@ -8,13 +8,13 @@ package sync
 import (
 	"errors"
 	"fmt"
-	"github.com/fractal-platform/fractal/chain"
+	"sync/atomic"
+
+	"github.com/deckarep/golang-set"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/types"
-	"github.com/fractal-platform/fractal/ftl/protocol"
 	"github.com/fractal-platform/fractal/packer"
 	"github.com/fractal-platform/fractal/utils/log"
-	"sync/atomic"
 )
 
 var (
@@ -22,18 +22,26 @@ var (
 
 	checkHeightMaxDiff  = uint64(10)
 
-	ErrMainBlockCheckAndExecFailed = errors.New("main block check or exec failed")
+	errMainBlockCheckAndExecFailed = errors.New("main block check or exec failed")
+	errBlockCheckFailed            = errors.New("block check failed")
 )
+
+type execCache struct {
+	blocks       types.Blocks
+	hashes       []common.Hash
+	mainChainSet mapset.Set
+	hashIndex    map[common.Hash]int
+}
 
 // use cursor for block process
 type Cursor struct {
-	index    uint64 // index of hashList when exec blocks
-	setHead  bool   //when sync blocks from checkpoint to fixPoint ,there is no need to checkGreedy and change head
-	finished int32
-	running  int32 //atomic status indicate whether the cursor is running or not
+	index        uint64 // index of hashList when exec blocks
+	setHead      bool   //when sync blocks from checkpoint to fixPoint ,there is no need to checkGreedy and change head
+	finished     int32
+	running      int32  //atomic status indicate whether the cursor is running or not
+	lowestHeight uint64 //if blockHeight<=lowestHeight+greedy ,no need to verify or exec
 
-	blocks    types.Blocks
-	hashElems protocol.HashElems
+	execCache execCache
 
 	chain  blockchain
 	logger log.Logger
@@ -42,15 +50,21 @@ type Cursor struct {
 	packer packer.Packer
 }
 
-func NewCursor(hashElems protocol.HashElems, chain blockchain, packer packer.Packer, setHead bool, remainedLen int) *Cursor {
+func NewCursor(hashes []common.Hash, mainChainSet mapset.Set, chain blockchain, packer packer.Packer, lowestHeight uint64, setHead bool) *Cursor {
+	hashIndex := make(map[common.Hash]int)
+	for index, hash := range hashes {
+		hashIndex[hash] = index
+	}
+
+	execCache := execCache{hashes: hashes, blocks: make(types.Blocks, len(hashes)), mainChainSet: mainChainSet, hashIndex: hashIndex}
 	cursor := &Cursor{
-		index:     0,
-		chain:     chain,
-		packer:    packer,
-		blocks:    make(types.Blocks, 0),
-		hashElems: hashElems,
-		setHead:   setHead,
-		logger:    log.NewSubLogger("m", fmt.Sprintf("cursor%d", cursorNo)),
+		index:        0,
+		chain:        chain,
+		packer:       packer,
+		lowestHeight: lowestHeight,
+		execCache:    execCache,
+		setHead:      setHead,
+		logger:       log.NewSubLogger("m", fmt.Sprintf("cursor%d", cursorNo)),
 	}
 	cursorNo += 1
 	return cursor
@@ -76,146 +90,132 @@ func (c *Cursor) close() {
 	atomic.StoreInt32(&c.running, 0)
 }
 
-func (c *Cursor) checkBlock(block *types.Block) error {
-	hashFrom := c.hashElems[0]
-	if block.Header.Height < hashFrom.Height && (hashFrom.Height-block.Header.Height) >= checkHeightMaxDiff {
-		return errors.New("block too low")
-	}
-	if block.Header.Height < hashFrom.Height && (hashFrom.Height-block.Header.Height) < checkHeightMaxDiff {
-		return nil
-	}
-
-	heightDiff := block.Header.Height - hashFrom.Height
-	// check whether block height exceeds
-	if heightDiff >= uint64(len(c.hashElems)) {
-		return errors.New("block is too high")
-	}
-	return nil
-}
-
 func (c *Cursor) incIndex() {
-	c.index++
+	c.logger.Info("cursor index change", "index", c.index+1)
+	c.index = c.index + 1
 }
 
-func (c *Cursor) getIndexHashElem() protocol.HashElem {
-	if c.index <= uint64(len(c.hashElems)-1) {
-		return *c.hashElems[c.index]
+func (c *Cursor) getIndexHash() common.Hash {
+	if c.index <= uint64(len(c.execCache.hashes)-1) {
+		return c.execCache.hashes[c.index]
 	}
-	return protocol.HashElem{}
+	return common.Hash{}
+}
+
+func (c *Cursor) setCache(block *types.Block) {
+	if index, ok := c.execCache.hashIndex[block.FullHash()]; ok {
+		c.execCache.blocks[index] = block
+	} else {
+		c.logger.Warn("cursor block is not as expected", "blockHash", block.FullHash())
+	}
 }
 
 func (c *Cursor) ProcessBlock(block *types.Block) error {
 	c.logger.Info("Process block in cursor", "index", c.index, "blockHeight", block.Header.Height,
-		"blockRound", block.Header.Round, "blockHash", block.FullHash(), "len(hashList)", len(c.hashElems),
-		"indexHashElem", c.getIndexHashElem())
+		"blockRound", block.Header.Round, "blockHash", block.FullHash(), "len(hashList)", len(c.execCache.hashes),
+		"indexHash", c.getIndexHash())
 
-	err := c.checkBlock(block)
-	if err != nil {
-		c.logger.Error("Check block failed", "err", err)
-		return err
+	if block.FullHash() == c.chain.Genesis().FullHash() {
+		c.logger.Info("genesis block, no need to process")
+		return nil
 	}
 
-	// sort blocks
-	c.blocks = append(c.blocks, block)
-	c.blocks.SortByRoundHash()
+	noNeedToProcessHeight := c.lowestHeight
+	if c.lowestHeight != 0 {
+		noNeedToProcessHeight = c.lowestHeight + uint64(c.chain.GetChainConfig().Greedy)
+	}
 
-	// try to insert blocks
-	var blocks = make(types.Blocks, len(c.blocks))
-	copy(blocks, c.blocks)
-	for _, block := range c.blocks {
-		if block.Header.Round > c.hashElems[c.index].Round {
-			continue
-		}
+	//set cache
+	c.setCache(block)
 
-		dependHash, err := c.chain.VerifyBlockDepend(block)
-		if err != nil {
-			c.logger.Info("Verify block failed in cursor", "block", block.FullHash(), "dependHash", dependHash, "err", err)
-			continue
-		}
+	hashesLen := len(c.execCache.hashes)
 
-		_, _, _, err = c.chain.VerifyBlock(block, c.setHead)
-		if err != nil {
-			continue
-		}
+	if c.index >= uint64(hashesLen) {
+		c.logger.Info("process block has already finished")
+		return nil
+	}
 
-		// insert
-		c.chain.InsertBlockNoCheck(block)
-		blocks.Remove(block.FullHash())
+	// try to exec block in main-chain
+	for c.execCache.blocks[c.index] != nil {
+		b := c.execCache.blocks[c.index]
 
-		// exec if necessary
-		if block.FullHash() == c.hashElems[c.index].Hash {
-			nextHash := common.Hash{}
-			if c.index+1 < uint64(len(c.hashElems)) {
-				nextHash = c.hashElems[c.index+1].Hash
-			}
-			c.logger.Info("exec block in main-chain", "execBlockHeight", block.Header.Height,
-				"execBlockRound", block.Header.Round, "execHash", block.FullHash(), "nextHash", nextHash)
+		if b.Header.Height <= noNeedToProcessHeight {
+			c.logger.Info("block is lower than lowestHeight+greedy, no need to process", "blockHeight", b.Header.Height, "lowestHeight+greedy", noNeedToProcessHeight)
+		} else {
+			//verify
+			c.logger.Info("verify and exec block",
+				"execBlockHeight", b.Header.Height,
+				"execBlockRound", b.Header.Round, "execHash", b.FullHash())
 
-			var err error
-			if c.setHead {
-				c.chain.InsertBlock(block)
-			} else {
-				err = c.chain.InsertPastBlock(block)
-			}
-			c.processFutureTxPackages(block.FullHash())
-
+			_, _, _, _, err := c.chain.VerifyBlock(b, c.setHead)
 			if err != nil {
-				// TODO: what should we do if the peer is malicious
-				break
+				return errBlockCheckFailed
 			}
-			c.incIndex()
-			if c.index >= uint64(len(c.hashElems)) {
-				break
+
+			//if in side chain
+			if !c.execCache.mainChainSet.Contains(b.FullHash()) {
+				c.logger.Info("insert block not in main chain",
+					"execBlockHeight", b.Header.Height,
+					"execBlockRound", b.Header.Round, "execHash", b.FullHash())
+				c.chain.InsertBlockNoCheck(b)
+			} else {
+				var err error
+				if c.setHead {
+					c.chain.InsertBlock(b)
+				} else {
+					err = c.chain.InsertPastBlock(b)
+				}
+
+				if err != nil {
+					// TODO: what should we do if the peer is malicious
+					c.logger.Info("insert past block failed", "err", err)
+					break
+				}
 			}
+
+		}
+
+		c.incIndex()
+		if c.index >= uint64(hashesLen) {
+			break
 		}
 	}
-	c.blocks = blocks
-
-	if c.index >= uint64(len(c.hashElems)) {
+	if c.index == uint64(hashesLen) {
 		c.logger.Info("process block has finished")
 		c.Finish()
 	}
+
 	return nil
 }
 
-// process future tx packages
-func (c *Cursor) processFutureTxPackages(blockHash common.Hash) {
-	for _, futureTxPackage := range c.chain.FutureBlockTxPackages(blockHash) {
-		c.logger.Info("Process future tx package", "pkgHash", futureTxPackage.Hash(), "blockHash", blockHash)
-		if c.insertTxPackage(futureTxPackage) {
-			c.chain.RemoveFutureBlockTxPackage(futureTxPackage.Hash())
-		}
-	}
-}
-
 // insert tx package
-func (c *Cursor) insertTxPackage(pkg *types.TxPackage) bool {
-	hash := pkg.Hash()
-
-	if c.chain.HasTxPackage(hash) {
-		return false
-	}
-
-	// Run the import on a new thread
-	log.Debug("Importing propagated tx package", "packer", pkg.Packer(), "nonce", pkg.Nonce(), "Hash", hash)
-
-	//
-	err := c.chain.VerifyTxPackage(pkg)
-	if err != nil {
-		// Something went very wrong, drop the peer
-
-		log.Error("verify Propagated tx package failed", "packer", pkg.Packer(), "nonce", pkg.Nonce(), "Hash", hash, "err", err)
-		if err == chain.ErrTxPackageRelatedBlockNotFound {
-			//pkg.ReceivedFrom.(*Peer).RequestOneBlock(pkg.BlockFullHash())
-			return false
-		}
-		return false
-	}
-
-	// Run the actual import
-	if err := c.packer.InsertRemoteTxPackage(pkg); err != nil {
-		log.Error("insert Propagated tx package into pool failed", "packer", pkg.Packer(), "nonce", pkg.Nonce(), "Hash", hash, "err", err)
-	}
-
-	return true
-}
+//func (c *Cursor) insertTxPackage(pkg *types.TxPackage) bool {
+//	hash := pkg.Hash()
+//
+//	if c.chain.HasTxPackage(hash) {
+//		return false
+//	}
+//
+//	// Run the import on a new thread
+//	log.Debug("Importing propagated tx package", "packer", pkg.Packer(), "nonce", pkg.Nonce(), "Hash", hash)
+//
+//	//
+//	err := c.chain.VerifyTxPackage(pkg)
+//	if err != nil {
+//		// Something went very wrong, drop the peer
+//
+//		log.Error("verify Propagated tx package failed", "packer", pkg.Packer(), "nonce", pkg.Nonce(), "Hash", hash, "err", err)
+//		if err == chain.ErrTxPackageRelatedBlockNotFound {
+//			//pkg.ReceivedFrom.(*Peer).RequestOneBlock(pkg.BlockFullHash())
+//			return false
+//		}
+//		return false
+//	}
+//
+//	// Run the actual import
+//	if err := c.packer.InsertRemoteTxPackage(pkg); err != nil {
+//		log.Error("insert Propagated tx package into pool failed", "packer", pkg.Packer(), "nonce", pkg.Nonce(), "Hash", hash, "err", err)
+//	}
+//
+//	return true
+//}

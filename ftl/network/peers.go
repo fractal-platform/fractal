@@ -5,9 +5,10 @@
 package network
 
 import (
+	"sync"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/p2p"
-	"sync"
 )
 
 // peers represents the collection of active peers

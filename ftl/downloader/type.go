@@ -2,12 +2,13 @@ package downloader
 
 import (
 	"errors"
-	"github.com/fractal-platform/fractal/common"
-	"github.com/fractal-platform/fractal/ftl/protocol"
-	"github.com/fractal-platform/fractal/utils/log"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/fractal-platform/fractal/common"
+	"github.com/fractal-platform/fractal/ftl/protocol"
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 const (
@@ -122,16 +123,16 @@ func (p *Peer) FetchNodeData(hashes []common.Hash) error {
 	return nil
 }
 
-// FetchBodies sends blocks range or a block hash retrieval request to the remote peer.
-func (p *Peer) FetchBlocks(stage protocol.SyncStage, roundFrom uint64, roundTo uint64) error {
+// FetchBlocksByHash sends block hashes retrieval request to the remote peer.
+func (p *Peer) FetchBlocks(stage protocol.SyncStage, reqsByHash []common.Hash, reqsFrom uint64, reqsTo uint64) error {
 	p.started = time.Now()
 
-	go p.FP.RequestSyncBlocks(stage, roundFrom, roundTo)
+	go p.FP.RequestSyncBlocks(stage, reqsByHash, reqsFrom, reqsTo)
 
 	return nil
 }
 
-// FetchBodies sends packages retrieval request to the remote peer.
+// FetchPkgs( sends packages retrieval request to the remote peer.
 func (p *Peer) FetchPkgs(stage protocol.SyncStage, hashes []common.Hash) error {
 	p.started = time.Now()
 
@@ -143,5 +144,5 @@ type FetcherPeer interface {
 	GetID() string
 	RequestNodeData(hashes []common.Hash) error
 	RequestSyncPkgs(stage protocol.SyncStage, hashes []common.Hash) error
-	RequestSyncBlocks(stage protocol.SyncStage, roundFrom uint64, roundTo uint64) error
+	RequestSyncBlocks(stage protocol.SyncStage, reqsByHash []common.Hash, reqsFrom uint64, reqsTo uint64) error
 }

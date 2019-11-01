@@ -114,13 +114,6 @@ func makeConfigNode(ctx *cli.Context) *config.Config {
 	if ctx.GlobalBool(syncTestFlag.Name) {
 		cfg.SyncTest = true
 	}
-	// load checkPoints file
-	if checkPointFile := ctx.GlobalString(checkPointsFlag.Name); checkPointFile != "" && cfg.ChainConfig.CheckPointEnable {
-		if data, err := ioutil.ReadFile(checkPointFile); err == nil {
-			json.Unmarshal(data, &cfg.CheckPoints)
-			log.Info("load checkPoints file success", "fileName", checkPointFile, "checkPoints", cfg.CheckPoints)
-		}
-	}
 
 	// set node config
 	cfg.NodeConfig = config.NewNodeConfig()
@@ -135,14 +128,14 @@ func makeConfigNode(ctx *cli.Context) *config.Config {
 		}
 	}
 
-	// Unlock the miner key.
+	// Unlock the keys.
 	pwd := ctx.GlobalString(unlockedAccountFlag.Name)
 	if pwd != "" {
 		cfg.KeyPass = pwd
 	}
 	cfg.MinerKeyFolder = cfg.NodeConfig.ResolvePath("keys/mining_keys/")
 	cfg.PackerKeyFolder = cfg.NodeConfig.ResolvePath("keys/packer_keys/")
-
+	cfg.CheckPointPriKeyPass = ctx.GlobalString(unlockCheckPointPriKeyFlag.Name)
 	return cfg
 }
 

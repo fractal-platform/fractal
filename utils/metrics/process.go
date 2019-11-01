@@ -1,8 +1,9 @@
 package metrics
 
 import (
-	"github.com/rcrowley/go-metrics"
 	"time"
+
+	"github.com/rcrowley/go-metrics"
 )
 
 type ProcessStats struct {
@@ -52,7 +53,7 @@ func CollectProcessMetrics() {
 			cpuUse := (stats[location1].CpuUserTime + stats[location1].CpuSystemTime) -
 				(stats[location2].CpuUserTime + stats[location2].CpuSystemTime)
 			cpuUse = cpuUse * 1e7
-			cpuUsage := 100.0 * float64(cpuUse) / float64(stats[location1].CurrentTime - stats[location2].CurrentTime)
+			cpuUsage := 100.0 * float64(cpuUse) / float64(stats[location1].CurrentTime-stats[location2].CurrentTime)
 			cpuUsageGauge.Update(cpuUsage)
 		} else {
 			cpuUsageGauge.Update(0)

@@ -12,3 +12,11 @@ type ChainUpdateEvent struct{ Block *Block }
 type NewMinedBlockEvent struct{ Block *Block }
 
 type BlockExecutedEvent struct{ Block *Block }
+
+type BloomInsertEvent struct{ Block *Block }
+
+// future block which is sent from blockchain, and will be processed in network handler
+type FutureBlockEvent struct{ Block *Block }
+
+// future txpkg which is sent from blockchain, and will be processed in network handler
+type FutureTxPackageEvent struct{ Pkg *TxPackage }

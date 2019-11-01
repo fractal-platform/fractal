@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"reflect"
 	"sync/atomic"
 	"time"
 
@@ -29,7 +30,6 @@ import (
 	"github.com/fractal-platform/fractal/p2p/discover"
 	"github.com/fractal-platform/fractal/rlp"
 	"github.com/fractal-platform/fractal/utils/log"
-	"reflect"
 )
 
 // Msg defines the structure of a p2p message.

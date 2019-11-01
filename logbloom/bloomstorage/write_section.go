@@ -29,15 +29,14 @@ func (s *SectionWriter) WriteSection(secNum uint64, bloomSlice []logbloom.OneBlo
 	log.Info("Processing new chain section", "section", secNum, "bloomNum", bloomNum)
 
 	// Reset and partial processing
-	if bloomNum == 0 {
-		return errors.New("bloom section size is 0")
+	if bloomNum != int(params.BloomBitsSize) {
+		return errors.New("bloom section size is not complete")
 	}
 
-	s.reset(secNum, uint16(bloomNum))
-	start := int(params.BloomBitsSize) - bloomNum
+	s.reset(secNum)
 
 	for i := range bloomSlice {
-		if err := s.process(uint16(start+i), bloomSlice[i].BloomBit); err != nil {
+		if err := s.process(uint16(i), bloomSlice[i].BloomBit); err != nil {
 			log.Error("Pack Bloom Process error", "error", err)
 			return err
 		}
@@ -47,6 +46,62 @@ func (s *SectionWriter) WriteSection(secNum uint64, bloomSlice []logbloom.OneBlo
 		return err
 	}
 	return nil
+}
+
+func (s *SectionWriter) ReplaceSectionBit(section uint64, bloomHeight uint64, bloomBit *types.Bloom) error {
+	s.reset(section)
+
+	replaceBitIndex := uint16(bloomHeight % params.BloomBitsSize)
+	replaceByteIndex := replaceBitIndex / 8
+	bitMask := byte(1) << byte(7-replaceBitIndex&7)
+	zeroBitMask := ^bitMask
+
+	// read
+	for i := 0; i < types.BloomBitLength; i++ {
+		var compVector, blob []byte
+		var err error
+		if compVector, err = dbaccessor.ReadBloomBits(s.chainDb, uint(i), section); err != nil {
+			return err
+		}
+		if blob, err = bitutil.DecompressBytes(compVector, int(params.BloomByteSize)); err != nil {
+			return err
+		}
+		copy(s.gen.Blooms[i][:], blob)
+	}
+
+	// check if need to replace
+	var noChange = true
+	for i := 0; i < types.BloomBitLength; i++ {
+		bloomByteIndex := types.BloomByteLength - 1 - i/8
+		bloomBitMask := byte(1) << byte(i&7)
+
+		if (bloomBit[bloomByteIndex] & bloomBitMask) == 0 {
+			if s.gen.Blooms[i][replaceByteIndex]&bitMask != 0 {
+				noChange = false
+				s.gen.Blooms[i][replaceByteIndex] &= zeroBitMask
+			}
+		} else {
+			if s.gen.Blooms[i][replaceByteIndex]&bitMask == 0 {
+				noChange = false
+				s.gen.Blooms[i][replaceByteIndex] |= bitMask
+			}
+		}
+	}
+
+	if noChange {
+		log.Info("ReplaceSectionBit: section has no change, don't need to commit.", "section", section, "bloomHeight", bloomHeight)
+		s.gen = nil
+		return nil
+	}
+
+	// clear
+	dbaccessor.WriteBloomSectionSavedFlag(s.chainDb, section, false)
+
+	// recommit
+	s.gen.NextBloomId = uint16(params.BloomBitsSize)
+	err := s.commit()
+
+	return err
 }
 
 func (s *SectionWriter) ClearSection(secNum uint64) {
@@ -59,79 +114,10 @@ func (s *SectionWriter) ClearSection(secNum uint64) {
 	batch.Write()
 }
 
-func (s *SectionWriter) ReplaceSectionBit(section uint64, bloomHeight uint64, bloomBit *types.Bloom) error {
-	gen := NewGenerator()
-
-	replaceBitIndex := uint16(bloomHeight % params.BloomBitsSize)
-	replaceByteIndex := replaceBitIndex / 8
-	bitMask := byte(1) << byte(7-replaceBitIndex&7)
-	zeroBitMask := byte(0xFF) - bitMask
-
-	// read
-	for i := 0; i < types.BloomBitLength; i++ {
-		var compVector, blob []byte
-		var err error
-		if compVector, err = dbaccessor.ReadBloomBits(s.chainDb, uint(i), section); err != nil {
-			return err
-		}
-		if blob, err = bitutil.DecompressBytes(compVector, int(params.BloomByteSize)); err != nil {
-			return err
-		}
-		copy(gen.Blooms[i][:], blob)
-		dbaccessor.DeleteBloomBits(s.chainDb, uint(i), section)
-	}
-
-	// replace
-	for i := 0; i < types.BloomBitLength; i++ {
-		bloomByteIndex := types.BloomByteLength - 1 - i/8
-		bloomBitMask := byte(1) << byte(i&7)
-
-		if (bloomBit[bloomByteIndex] & bloomBitMask) == 0 {
-			gen.Blooms[i][replaceByteIndex] &= zeroBitMask
-		} else {
-			gen.Blooms[i][replaceByteIndex] |= bitMask
-		}
-	}
-
-	gen.NextBloomId = uint16(params.BloomBitsSize)
-	s.gen, s.accSection = gen, section
-	err := s.commit()
-
-	return err
-}
-
 // Reset starting a new bloombits index section.
-func (s *SectionWriter) reset(section uint64, bloomNum uint16) error {
+func (s *SectionWriter) reset(section uint64) {
 	gen := NewGenerator()
-	if bloomNum > 0 && bloomNum < uint16(params.BloomBitsSize) {
-		if !dbaccessor.ReadBloomSectionSavedFlag(s.chainDb, section) {
-			log.Error("BloomIndexer Reset error, cannot find section in database", "section", section)
-			return ErrCannotFindSection
-		}
-
-		validBitIndex := uint16(params.BloomBitsSize) - bloomNum - 1
-		validByteIndex := validBitIndex / 8
-		remainderBit := validBitIndex % 8
-
-		for i := 0; i < types.BloomBitLength; i++ {
-			var compVector, blob []byte
-			var err error
-			if compVector, err = dbaccessor.ReadBloomBits(s.chainDb, uint(i), section); err != nil {
-				return err
-			}
-			if blob, err = bitutil.DecompressBytes(compVector, int(params.BloomByteSize)); err != nil {
-				return err
-			}
-			copy(gen.Blooms[i][:validByteIndex], blob[:validByteIndex])
-			gen.Blooms[i][validByteIndex] = (byte(0xFF) << (7 - remainderBit)) & blob[validByteIndex]
-			dbaccessor.DeleteBloomBits(s.chainDb, uint(i), section)
-		}
-
-		dbaccessor.WriteBloomSectionSavedFlag(s.chainDb, section, false)
-		gen.NextBloomId = validBitIndex + 1
-	}
 	s.gen, s.accSection = gen, section
-	return nil
 }
 
 // Process adding a new header's bloom into the index.
@@ -152,6 +138,8 @@ func (s *SectionWriter) commit() error {
 	}
 
 	dbaccessor.WriteBloomSectionSavedFlag(batch, s.accSection, true)
+
+	s.gen = nil
 
 	return batch.Write()
 }

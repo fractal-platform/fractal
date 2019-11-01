@@ -1,12 +1,12 @@
 package state
 
 import (
-	"github.com/fractal-platform/fractal/core/types"
-	"github.com/fractal-platform/fractal/utils/log"
 	"reflect"
 	"sync"
 
 	"github.com/fractal-platform/fractal/common"
+	"github.com/fractal-platform/fractal/core/types"
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 type account struct {

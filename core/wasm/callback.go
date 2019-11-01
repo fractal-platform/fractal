@@ -1,6 +1,5 @@
 package wasm
 
-import "C"
 import (
 	"math/big"
 	"sync"
@@ -14,14 +13,33 @@ import (
 	"github.com/fractal-platform/fractal/utils/log"
 )
 
+// for transaction call
+type callframe struct {
+	depth           uint8          // call depth(minimize: 0)
+	storageDelegate bool           // do not change storage context address if true
+	userDelegate    bool           // do not change business user address if true
+	from            common.Address // from address(caller)
+	to              common.Address // contract address(callee)
+	storage         common.Address // storage address
+	user            common.Address // business user address(maybe any caller in the call stack)
+	action          []byte         // call action
+	ret             int            // action return (0=success)
+	err             string         // error string if call failed
+	result          []byte         // action call result
+	gas             uint64         // gas used
+}
+
 type registerParam struct {
-	stateDb *state.StateDB
-	block   *types.Block
+	stateDb     *state.StateDB
+	block       *types.Block
+	remainedGas *uint64
+	callstack   []callframe
+	lastframe   callframe
 }
 
 type RegisterParam struct {
 	lock sync.RWMutex
-	item map[uint64]registerParam
+	item map[uint64]*registerParam
 
 	nextKey uint64
 }
@@ -33,7 +51,7 @@ var GlobalRegisterParam *RegisterParam
 func GetGlobalRegisterParam() *RegisterParam {
 	once.Do(func() {
 		GlobalRegisterParam = &RegisterParam{
-			item: make(map[uint64]registerParam),
+			item: make(map[uint64]*registerParam),
 		}
 	})
 	return GlobalRegisterParam
@@ -44,9 +62,10 @@ func (r *RegisterParam) RegisterParam(s *state.StateDB, b *types.Block) uint64 {
 	defer r.lock.Unlock()
 
 	key := atomic.AddUint64(&r.nextKey, 1)
-	r.item[key] = registerParam{
-		stateDb: s,
-		block:   b,
+	r.item[key] = &registerParam{
+		stateDb:   s,
+		block:     b,
+		callstack: make([]callframe, 0),
 	}
 	return key
 }
@@ -70,6 +89,127 @@ func (r *RegisterParam) getBlock(key uint64) *types.Block {
 	defer r.lock.RUnlock()
 
 	return r.item[key].block
+}
+
+func (r *RegisterParam) GetContractCode(key uint64, address common.Address) []byte {
+	return r.getState(key).GetCode(address)
+}
+
+func (r *RegisterParam) GetContractOwner(key uint64, address common.Address) common.Address {
+	return r.getState(key).GetContractOwner(address)
+}
+
+func (r *RegisterParam) GetCurrentContract(key uint64) common.Address {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	size := len(r.item[key].callstack)
+	return r.item[key].callstack[size-1].to
+}
+
+func (r *RegisterParam) GetCurrentUser(key uint64) common.Address {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	size := len(r.item[key].callstack)
+	return r.item[key].callstack[size-1].user
+}
+
+func (r *RegisterParam) GetCurrentStorage(callbackParamKey uint64) common.Address {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	size := len(r.item[callbackParamKey].callstack)
+	return r.item[callbackParamKey].callstack[size-1].storage
+}
+
+func (r *RegisterParam) GetCurrentDepth(key uint64) uint8 {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	size := len(r.item[key].callstack)
+	return r.item[key].callstack[size-1].depth
+}
+
+func (r *RegisterParam) GetRemainedGas(key uint64) *uint64 {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	return r.item[key].remainedGas
+}
+
+func (r *RegisterParam) SetRemainedGas(key uint64, remainedGas *uint64) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	r.item[key].remainedGas = remainedGas
+}
+
+func (r *RegisterParam) ClearCallstack(key uint64) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	r.item[key].callstack = make([]callframe, 0)
+}
+
+func (r *RegisterParam) AddCallstack(key uint64, from common.Address, to common.Address, user common.Address, action []byte, storageDelegate bool, userDelegate bool) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	storageAddress := to
+	if storageDelegate {
+		storageAddress = from
+	}
+
+	userAddress := user
+	if userDelegate {
+		userAddress = from
+	}
+
+	depth := uint8(len(r.item[key].callstack))
+	r.item[key].lastframe = callframe{}
+	r.item[key].callstack = append(r.item[key].callstack, callframe{
+		depth:           depth,
+		storageDelegate: storageDelegate,
+		userDelegate:    userDelegate,
+		from:            from,
+		to:              to,
+		storage:         storageAddress,
+		user:            userAddress,
+		action:          action,
+		ret:             0,
+		err:             "",
+		result:          nil,
+		gas:             0,
+	})
+}
+
+func (r *RegisterParam) FulfillCallstack(key uint64, ret int, err string, gas uint64) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	index := len(r.item[key].callstack) - 1
+	r.item[key].callstack[index].ret = ret
+	r.item[key].callstack[index].err = err
+	r.item[key].callstack[index].gas = gas
+
+	r.item[key].lastframe = r.item[key].callstack[index]
+	r.item[key].callstack = r.item[key].callstack[:index]
+}
+
+func (r *RegisterParam) GetCallResult(key uint64) []byte {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	return r.item[key].lastframe.result
+}
+
+func (r *RegisterParam) SetCallResult(key uint64, result []byte) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	index := len(r.item[key].callstack) - 1
+	r.item[key].callstack[index].result = result
 }
 
 func DbStore(callbackParamKey uint64, address common.Address, table uint64, key []byte, value []byte) {
@@ -173,7 +313,17 @@ func GetBlockHeight(callbackParamKey uint64) uint64 {
 	return b.Header.Height
 }
 
-func AddLog(callbackParamKey uint64, address common.Address, topicSlice []byte, topicNum int) {
+func GetBlockHash(callbackParamKey uint64) common.Hash {
+	b := GetGlobalRegisterParam().getBlock(callbackParamKey)
+	if b == nil {
+		log.Error("GetBlockHeight error: block is nil")
+		return common.Hash{}
+	}
+
+	return b.SimpleHash()
+}
+
+func AddLog(callbackParamKey uint64, address common.Address, topicSlice []byte, topicNum int, dataSlice []byte, dataLength int) {
 	s := GetGlobalRegisterParam().getState(callbackParamKey)
 	if s == nil {
 		log.Error("AddLog error: state is nil")
@@ -192,10 +342,13 @@ func AddLog(callbackParamKey uint64, address common.Address, topicSlice []byte, 
 		copy(topics[i][:], topicSlice[topicStart:topicStart+common.HashLength])
 	}
 
+	var data = make([]byte, dataLength)
+	copy(data, dataSlice)
+
 	s.AddLog(&types.Log{
 		Address:     address,
 		Topics:      topics,
-		Data:        nil,
+		Data:        data,
 		BlockNumber: blockHeight,
 	})
 }

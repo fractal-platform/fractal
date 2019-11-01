@@ -7,6 +7,7 @@ package chain
 
 import (
 	"errors"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/dbaccessor"
 	"github.com/fractal-platform/fractal/core/types"
@@ -133,7 +134,7 @@ func (bc *BlockChain) CheckBlocksReverse() ([]common.Hash, map[common.Hash]commo
 			}
 
 			currBlock := bc.GetBlock(current)
-			confirmBlocks, dependParentHash, dependPkgHash, err := bc.VerifyBlock(currBlock, true)
+			confirmBlocks, dependParentHash, _, dependPkgHash, err := bc.VerifyBlock(currBlock, true)
 			if err != nil {
 				check = false
 			}
