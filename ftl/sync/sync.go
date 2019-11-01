@@ -6,6 +6,11 @@ package sync
 
 import (
 	"errors"
+	"math/rand"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/fractal-platform/fractal/chain"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/config"
@@ -18,15 +23,14 @@ import (
 	"github.com/fractal-platform/fractal/params"
 	"github.com/fractal-platform/fractal/utils"
 	"github.com/fractal-platform/fractal/utils/log"
-	"math/rand"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 const (
 	// if the depth for depend-error is higher then [peerSyncThreshold], than PeerSync will start.
 	peerSyncThreshold = 6
+
+	// identifier for local node
+	selfPeerId = "self"
 
 	// if we got error in PeerSync with the peer, we won't PeerSync with him in [finishDependErrTime] seconds.
 	finishDependErrTime = 600
@@ -42,7 +46,6 @@ var (
 
 // callbacks
 type removePeerCallback func(id string, addBlack bool)
-type finishDepend func(p *network.Peer)
 
 type Synchronizer struct {
 	config     *config.SyncConfig
@@ -53,7 +56,6 @@ type Synchronizer struct {
 	miner              miner
 	packer             packer.Packer
 	removePeerCallback removePeerCallback
-	finishDependErr    finishDepend
 	blockProcessCh     chan *network.BlockWithVerifyFlag
 
 	// status & mode
@@ -73,9 +75,12 @@ type Synchronizer struct {
 	syncHashListChForCP2FP chan PeerHashElemList
 
 	// for fast sync
-	stateSync                 *downloader.StateSync
-	blockSync                 *downloader.BlockFetcher
+	stateSync      *downloader.StateSync
+	blockSync      *downloader.BlockFetcherByHash
+	blockSyncRound *downloader.BlockFetcherByRound
+
 	syncHashListChForFastSync chan PeerHashElemList
+	hashTreeRevCh             chan protocol.SyncHashTreeRsp
 	blocksForPreStateRevCh    chan []*types.Block // pre Blocks
 	blocksForPostStateRevCh   chan []*types.Block // post Blocks
 	fastSyncFinishedCh        chan struct{}
@@ -90,7 +95,7 @@ type Synchronizer struct {
 	peerSyncErrCh             chan peer
 }
 
-func NewSynchronizer(chain blockchain, miner miner, packer packer.Packer, removePeerCallback removePeerCallback, finishDependErr finishDepend, blockProcessCh chan *network.BlockWithVerifyFlag, conf *config.SyncConfig) *Synchronizer {
+func NewSynchronizer(chain blockchain, miner miner, packer packer.Packer, removePeerCallback removePeerCallback, blockProcessCh chan *network.BlockWithVerifyFlag, conf *config.SyncConfig) *Synchronizer {
 	sync := &Synchronizer{
 		config:     conf,
 		syncQuitCh: make(chan struct{}),
@@ -100,7 +105,6 @@ func NewSynchronizer(chain blockchain, miner miner, packer packer.Packer, remove
 		miner:              miner,
 		packer:             packer,
 		removePeerCallback: removePeerCallback,
-		finishDependErr:    finishDependErr,
 		blockProcessCh:     blockProcessCh,
 
 		peers:     make(map[string]peer),
@@ -108,6 +112,7 @@ func NewSynchronizer(chain blockchain, miner miner, packer packer.Packer, remove
 
 		syncHashListChForCP2FP: make(chan PeerHashElemList, 16),
 
+		hashTreeRevCh:             make(chan protocol.SyncHashTreeRsp),
 		blocksForPreStateRevCh:    make(chan []*types.Block),
 		blocksForPostStateRevCh:   make(chan []*types.Block),
 		fastSyncFinishedCh:        make(chan struct{}),
@@ -123,7 +128,7 @@ func NewSynchronizer(chain blockchain, miner miner, packer packer.Packer, remove
 	sync.changeSyncStatus(SyncStatusInit)
 	sync.changeFastSyncMode(FastSyncModeNone)
 	sync.changeFastSyncStatus(FastSyncStatusNone)
-	sync.cp2fp = newCP2FPSync(sync.syncHashListChForCP2FP, conf.LongTimeOutOfFullfillLongList, sync)
+	sync.cp2fp = newCP2FPSync(sync.hashTreeRevCh, sync)
 	return sync
 }
 
@@ -200,6 +205,7 @@ func (s *Synchronizer) loop() {
 					s.chain.SetCurrentBlock(s.lastHeadBlock)
 				}
 
+				s.chain.StartCreateCheckPoint()
 				// do init again
 				s.doInit()
 			}
@@ -218,10 +224,9 @@ func (s *Synchronizer) loop() {
 
 				// reset flag and do callback
 				s.peerSyncStarted[p.GetID()] = false
-				s.finishDependErr(p.(*network.Peer))
 
 				// restart cp2fp
-				go s.cp2fp.startTask(s.chain.Genesis(), s.chain.CurrentBlock(), s.getPeers())
+				go s.cp2fp.startTask(s.chain.CurrentBlock().Header.Height, s.chain.CurrentBlock().FullHash(), s.chain.CurrentBlock().AccHash, s.getPeers())
 			}
 
 		case p := <-s.peerSyncErrCh:
@@ -242,11 +247,11 @@ func (s *Synchronizer) loop() {
 				// wait some time
 				time.AfterFunc(time.Duration(finishDependErrTime)*time.Second, func() {
 					s.peerSyncStarted[p.GetID()] = false
-					s.finishDependErr(p.(*network.Peer))
 				})
 
 				// restart cp2fp
-				go s.cp2fp.startTask(s.chain.Genesis(), s.chain.CurrentBlock(), s.getPeers())
+				go s.cp2fp.startTask(s.chain.CurrentBlock().Header.Height, s.chain.CurrentBlock().FullHash(), s.chain.CurrentBlock().AccHash, s.getPeers())
+
 			}
 
 		case <-s.syncQuitCh:
@@ -269,11 +274,11 @@ func (s *Synchronizer) doInit() {
 	diff, _ := s.getHeightDiffFromRegularPeers()
 	if diff < s.config.HeightDiff {
 		//sync from break point or checkpoint
-		peers := s.getPeers()
-		s.cp2fp.startTask(s.chain.Genesis(), s.chain.CurrentBlock(), peers)
-
 		// change to normal state
 		s.changeSyncStatus(SyncStatusNormal)
+		peers := s.getPeers()
+		s.cp2fp.startTask(s.chain.CurrentBlock().Header.Height, s.chain.CurrentBlock().FullHash(), s.chain.CurrentBlock().AccHash, peers)
+
 		return
 	}
 
@@ -349,16 +354,8 @@ func (s *Synchronizer) getHeightDiffFromRegularPeers() (int32, []peer) {
 	return int32(diff), peers
 }
 
-func (s *Synchronizer) getLatestCheckPoint() config.CheckPoint {
-	if !s.chain.GetChainConfig().CheckPointEnable {
-		genesisBlock := s.chain.Genesis()
-		return config.CheckPoint{Hash: genesisBlock.FullHash(), Height: genesisBlock.Header.Height, Round: genesisBlock.Header.Round}
-	}
-	checkpoint := config.GetLatestCheckPoint(s.chain.GetCheckPoints())
-	if checkpoint == (config.CheckPoint{}) {
-		checkpoint = config.CheckPoint{Hash: s.chain.Genesis().FullHash(), Height: s.chain.Genesis().Header.Height, Round: s.chain.Genesis().Header.Round}
-	}
-	return checkpoint
+func (s *Synchronizer) getLatestCheckPoint() types.TreePoint {
+	return *s.chain.GetCheckPoint().TreePoint
 }
 
 //choose length number from bucketSize ,example : choose [1,2] of [0,1,2]
@@ -412,6 +409,10 @@ func (s *Synchronizer) GetConfig() *config.SyncConfig {
 	return s.config
 }
 
+func (s *Synchronizer) GetPeerSyncThreshold() int {
+	return peerSyncThreshold
+}
+
 type peer interface {
 	GetID() string
 	Name() string
@@ -420,27 +421,24 @@ type peer interface {
 	CompareTo(simpleHash common.Hash, height uint64, round uint64) int
 
 	RequestSyncHashList(syncStage protocol.SyncStage, syncType protocol.SyncHashType, hashEFrom protocol.HashElem, hashETo protocol.HashElem) error
-	SendSyncHashList(syncStage protocol.SyncStage, hashType protocol.SyncHashType, hashList protocol.HashElems) error
+	SendSyncHashList(reqID uint64, syncStage protocol.SyncStage, hashType protocol.SyncHashType, hashList protocol.HashElems) error
 
 	// for fast sync
 	RequestNodeData(hashes []common.Hash) error
-	RequestSyncPreBlocksForState(hash common.Hash) error
-	SendSyncPreBlocksForState(blocks []*types.Block, pkgs []*types.TxPackage) error
-	RequestSyncPostBlocksForState(hashEFrom protocol.HashElem, hashETo protocol.HashElem) error
+	RequestSyncHashTree(hashFrom common.Hash, hashTo common.Hash) error
+	SendSyncHashTree(reqID uint64, tree types.HashTree, point types.TreePoint) error
+	RequestSyncBestPeerBlocks(hashEFrom protocol.HashElem, hashETo protocol.HashElem) error
 
 	// for block sync
 	RequestSyncPkgs(stage protocol.SyncStage, hashes []common.Hash) error
-	RequestSyncBlocks(stage protocol.SyncStage, roundFrom uint64, roundTo uint64) error
+	RequestSyncBlocks(stage protocol.SyncStage, reqsByHash []common.Hash, reqsFrom uint64, reqsTo uint64) error
 }
 
 type blockchain interface {
 	HasTxPackage(hash common.Hash) bool
 	GetTxPackage(hash common.Hash) *types.TxPackage
 	IsTxPackageInFuture(hash common.Hash) bool
-	GetRelatedBlockForFutureTxPackage(hash common.Hash) common.Hash
 	VerifyTxPackage(pkg *types.TxPackage) error
-	FutureBlockTxPackages(blockHash common.Hash) types.TxPackages
-	RemoveFutureBlockTxPackage(pkgHash common.Hash)
 
 	CurrentBlock() *types.Block
 	SendBlockExecutedFeed(block *types.Block)
@@ -449,15 +447,21 @@ type blockchain interface {
 	InsertBlock(block *types.Block)
 	InsertPastBlock(block *types.Block) error
 	InsertBlockNoCheck(block *types.Block)
-	VerifyBlockDepend(block *types.Block) (common.Hash, error)
-	VerifyBlock(block *types.Block, checkGreedy bool) (types.Blocks, common.Hash, common.Hash, error)
+	VerifyBlock(block *types.Block, checkGreedy bool) (types.Blocks, common.Hash, int, common.Hash, error)
 	GetChainConfig() *config.ChainConfig
 	HasBlock(hash common.Hash) bool
 	GetBlock(hash common.Hash) *types.Block
 	Database() dbwrapper.Database
 	Genesis() *types.Block
-	GetCheckPoints() *config.CheckPoints
+	GetLatestCheckPointBelowHeight(height uint64, force bool) (*types.CheckPoint, error)
+	GetCheckPointByHash(hash common.Hash) *types.CheckPoint
+	GetCheckPoint() *types.CheckPoint
+	StartCreateCheckPoint()
+	StopCreateCheckPoint()
 	GetBreakPoint(checkpoint *types.Block, headBlock *types.Block) (*types.Block, *types.Block, error)
+	VerifyBlockDepend(block *types.Block) (common.Hash, error)
+	CreateHashTree(belowBlockHash common.Hash, upBlockHash common.Hash) (*types.HashTree, *types.TreePoint, error)
+	Filter(hashes common.Hashes) common.Hashes
 }
 
 type miner interface {

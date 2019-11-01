@@ -1,6 +1,6 @@
 language: go
 
-go: 
+go:
   - 1.11.2
 
 addons:
@@ -11,7 +11,9 @@ addons:
 os: osx
 osx_image: xcode11.2
 
-install: true
+install:
+  - pwd
+  - export DYLD_LIBRARY_PATH=./src/github.com/fractal-platform/fractal/transaction/txexec
 
 script:
   - golangci-lint run -D errcheck,structcheck ./...

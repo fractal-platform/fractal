@@ -8,10 +8,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/fractal-platform/fractal/crypto"
 	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/crypto/scrypt"
 	"io"
+
+	"github.com/fractal-platform/fractal/crypto"
 )
 
 const (

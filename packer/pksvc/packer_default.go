@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	DefaultPkgSize   = 1024
+	DefaultPkgSize = 1024
 )
 
 type blockChain interface {
 	Database() dbwrapper.Database
-	PutTxPackage(pkg *types.TxPackage)
+	InsertTxPackage(pkg *types.TxPackage)
 	CurrentBlock() *types.Block
 	StateAt(root common.Hash) (*state.StateDB, error)
 	GetPrePackerNumber(headBlockWhenPacking *types.Block) (uint32, error)

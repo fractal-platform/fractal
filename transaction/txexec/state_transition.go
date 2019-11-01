@@ -8,13 +8,13 @@ import (
 	"math"
 	"math/big"
 	"reflect"
-	"unsafe"
 
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/core/nonces"
 	"github.com/fractal-platform/fractal/core/state"
 	"github.com/fractal-platform/fractal/core/types"
+	"github.com/fractal-platform/fractal/core/wasm"
 	"github.com/fractal-platform/fractal/crypto"
 	"github.com/fractal-platform/fractal/params"
 	"github.com/fractal-platform/fractal/utils/log"
@@ -114,6 +114,14 @@ func NewStateTransition(prevStateDb *state.StateDB, statedb *state.StateDB, msg 
 	}
 }
 
+// to returns the recipient of the message.
+func (st *StateTransition) to() common.Address {
+	if st.msg == nil || st.msg.To() == nil /* contract creation */ {
+		return common.Address{}
+	}
+	return *st.msg.To()
+}
+
 func (st *StateTransition) useGas(amount uint64) error {
 	if st.gas < amount {
 		return ErrOutOfGas
@@ -124,7 +132,7 @@ func (st *StateTransition) useGas(amount uint64) error {
 }
 
 func (st *StateTransition) buyGas() error {
-	mgval := new(big.Int).Mul(new(big.Int).SetUint64(st.msg.Gas()), st.gasPrice)
+	mgval := types.GasFee(st.msg.Gas(), st.gasPrice)
 	if st.state.GetBalance(st.msg.From()).Cmp(mgval) < 0 {
 		//log.Warn("gas check", "balance", st.state.GetBalance(st.msg.From()), "mgval", mgval, "gasPrice", st.gasPrice)
 		return ErrInsufficientBalanceForGas
@@ -195,7 +203,7 @@ func (st *StateTransition) refundGas() {
 	st.gas += refund
 
 	// Return the remaining gas, exchanged at the original rate.
-	remaining := new(big.Int).Mul(new(big.Int).SetUint64(st.gas), st.gasPrice)
+	remaining := types.GasFee(st.gas, st.gasPrice)
 	st.state.AddBalance(st.msg.From(), remaining)
 
 	// Also return remaining gas to the block gas counter so it is
@@ -238,7 +246,7 @@ func (st *StateTransition) SimpleTransitionDb(coinbase common.Address) (ret []by
 	Transfer(st.state, msg.From(), *msg.To(), st.value)
 
 	st.refundGas()
-	st.state.AddBalance(coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice))
+	st.state.AddBalance(coinbase, types.GasFee(st.gasUsed(), st.gasPrice))
 
 	return ret, st.gasUsed(), err
 }
@@ -279,7 +287,7 @@ func (st *StateTransition) WasmTransitionDb(coinbase common.Address) (ret []byte
 	}
 
 	st.refundGas()
-	st.state.AddBalance(coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice))
+	st.state.AddBalance(coinbase, types.GasFee(st.gasUsed(), st.gasPrice))
 
 	return ret, st.gasUsed(), err == ErrWasmExec, err
 }
@@ -300,17 +308,18 @@ func (st *StateTransition) createWasmAccount() error {
 }
 
 func (st *StateTransition) callWasm() error {
-	Transfer(st.state, st.msg.From(), *st.msg.To(), st.value)
+	Transfer(st.state, st.msg.From(), st.to(), st.value)
 
-	code := st.state.GetCode(*st.msg.To())
+	code := st.state.GetCode(st.to())
 	if len(st.data) > 0 && len(code) > 0 {
 		from := st.msg.From()
-		to := st.msg.To()
-		owner := st.state.GetContractOwner(*st.msg.To())
+		to := st.to()
+		owner := st.state.GetContractOwner(to)
 		value := st.value.Uint64()
-		result := CallWasmContract(unsafe.Pointer(&code[0]), len(code), unsafe.Pointer(&st.data[0]), len(st.data), unsafe.Pointer(&from[0]), unsafe.Pointer(&to[0]), unsafe.Pointer(&owner[0]), value, &st.gas, st.callbackParamKey)
-		if result != 0 {
-			log.Error("CallWasmContract returned with error", "result", result)
+		wasm.GetGlobalRegisterParam().ClearCallstack(st.callbackParamKey)
+		ret := CallWasmContract(code, st.data, from, to, owner, from, value, false, false, &st.gas, st.callbackParamKey)
+		if ret != 0 {
+			log.Error("CallWasmContract return with error", "ret", ret)
 			return ErrWasmExec
 		}
 	}
@@ -326,7 +335,7 @@ func (st *StateTransition) transferIsAllowed() bool {
 		return true
 	}
 
-	if st.prevStateDb.InTransferBlackList(*st.msg.To()) {
+	if st.prevStateDb.InTransferBlackList(st.to()) {
 		log.Warn("Transfer is not allowed, To address is in the black list", "from", st.msg.From(), "to", *st.msg.To())
 		return false
 	}

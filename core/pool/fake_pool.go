@@ -1,12 +1,12 @@
 package pool
 
 import (
-	"github.com/fractal-platform/fractal/core/types"
 	"sync"
 	"time"
 
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/state"
+	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/event"
 	"github.com/fractal-platform/fractal/utils/log"
 )
@@ -21,7 +21,7 @@ type fakePool struct {
 
 	eleFeed event.Feed
 	scope   event.SubscriptionScope
-	helper  Helper
+	helper  helper
 
 	startCleanTime     int64
 	cleanPeriod        int64
@@ -29,7 +29,7 @@ type fakePool struct {
 }
 
 // NewFakePool creates a fake transaction pool
-func NewFakePool(startCleanTime int64, cleanPeriod int64, leftEleNumEachAddr int, helper Helper) Pool {
+func NewFakePool(startCleanTime int64, cleanPeriod int64, leftEleNumEachAddr int, helper helper) Pool {
 	// Create the transaction pool with its initial settings
 	pool := &fakePool{
 		pool:   make(map[common.Address][]Element),
@@ -185,7 +185,7 @@ func (pool *fakePool) add(ele Element) {
 	if pool.all.Get(hash) != nil {
 		return
 	}
-	from, _ := pool.helper.Sender(ele)
+	from, _ := pool.helper.sender(ele)
 
 	pool.pool[from] = append(pool.pool[from], ele)
 	pool.all.Add(ele)

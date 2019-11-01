@@ -3,16 +3,15 @@ package pksvc
 import (
 	"context"
 	"errors"
-	"github.com/fractal-platform/fractal/common"
-	"github.com/fractal-platform/fractal/core/dbaccessor"
-	"github.com/fractal-platform/fractal/core/pool"
 	"sync/atomic"
 	"time"
 
+	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/config"
+	"github.com/fractal-platform/fractal/core/dbaccessor"
+	"github.com/fractal-platform/fractal/core/pool"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/event"
-	"github.com/fractal-platform/fractal/packer"
 	"github.com/fractal-platform/fractal/packer/tx_collector"
 	"github.com/fractal-platform/fractal/utils/log"
 )
@@ -20,7 +19,7 @@ import (
 type packService struct {
 	txCollector *tx_collector.TxCollector
 	txChan      chan types.Transactions
-	txPool      *txPool
+	container   *txContainer
 	pkgPool     pool.Pool
 	worker      *worker
 	chain       blockChain
@@ -34,15 +33,15 @@ func newPackService(cfg *config.Config, packerKeyManager packerKeyManager, pkgPo
 	fakeMode := cfg.FakeMode
 	interval := cfg.PackerInterval
 	listenAddr := cfg.PackerCollectAddr
-	txPool := newTxPool(fakeMode, make(chan *types.Transaction), txSigner, chain, packerGroupSize);
+	container := newTxContainer(fakeMode, make(chan *types.Transaction), txSigner, chain, packerGroupSize);
 	p := &packService{
 		txCollector: tx_collector.NewTxCollector(listenAddr),
-		txPool:      txPool,
+		container:   container,
 		pkgPool:     pkgPool,
 		chain:       chain,
 		nonces:      make(map[common.Address]uint64),
 	}
-	p.worker = newWorker(fakeMode, interval, txSigner, packerKeyManager, p, txPool, new(event.Feed), chain, packerGroupSize)
+	p.worker = newWorker(fakeMode, interval, txSigner, packerKeyManager, p, container, new(event.Feed), chain, packerGroupSize)
 	atomic.StoreInt32(&p.running, 0)
 
 	// if the param<PackerEnable> is true, the packing service is enabled by default.
@@ -57,7 +56,7 @@ func (self *packService) InsertTransactions(txs types.Transactions) []error {
 	if !self.IsPacking() {
 		return []error{errors.New("packer service has not been started")}
 	}
-	return self.txPool.AddAll(txs)
+	return self.container.AddAll(txs)
 }
 
 func (self *packService) StartPacking(packerIndex uint32) {
@@ -66,7 +65,7 @@ func (self *packService) StartPacking(packerIndex uint32) {
 	}
 	log.Info("start packing", "packerIndex", packerIndex)
 	// enable receive transactions
-	self.txPool.SetPackerIndex(packerIndex)
+	self.container.SetPackerIndex(packerIndex)
 	self.txChan = make(chan types.Transactions)
 	self.worker.start(packerIndex)
 	go func() {
@@ -76,7 +75,7 @@ func (self *packService) StartPacking(packerIndex uint32) {
 			if !ok {
 				return
 			}
-			self.txPool.AddAll(txs)
+			self.container.AddAll(txs)
 		}
 	}()
 
@@ -96,20 +95,20 @@ func (self *packService) IsPacking() bool {
 	return atomic.LoadInt32(&self.running) == 1
 }
 
-func (self *packService) Subscribe(ch chan<- packer.NewPackageEvent) event.Subscription {
+func (self *packService) Subscribe(ch chan<- types.TxPackages) event.Subscription {
 	return self.worker.newPkgEventFeed.Subscribe(ch)
 }
 
 // TODO: add param for no-pool-add
 func (self *packService) InsertRemoteTxPackage(pkg *types.TxPackage) error {
-	self.chain.PutTxPackage(pkg)
+	self.chain.InsertTxPackage(pkg)
 	err := self.pkgPool.AddRemote(pkg)
 
 	return err
 }
 
 func (self *packService) insertLocalTxPackage(pkg *types.TxPackage) error {
-	self.chain.PutTxPackage(pkg)
+	self.chain.InsertTxPackage(pkg)
 	err := self.pkgPool.AddLocal(pkg)
 
 	return err
@@ -147,7 +146,7 @@ type worker struct {
 	packerKeyManager packerKeyManager
 	packService      *packService
 
-	txpool          *txPool
+	txContainer     *txContainer
 	chain           blockChain
 	packerGroupSize uint64
 
@@ -159,14 +158,14 @@ type worker struct {
 	newPkgEventFeed *event.Feed
 }
 
-func newWorker(fakeMode bool, interval int, txSigner types.Signer, packerKeyManager packerKeyManager, packService *packService, txpool *txPool, newPkgEventFeed *event.Feed, chain blockChain, packerGroupSize uint64) *worker {
+func newWorker(fakeMode bool, interval int, txSigner types.Signer, packerKeyManager packerKeyManager, packService *packService, txContainer *txContainer, newPkgEventFeed *event.Feed, chain blockChain, packerGroupSize uint64) *worker {
 	w := &worker{
 		fakeMode:         fakeMode,
 		txSigner:         txSigner,
 		pkgSigner:        types.MakePkgSigner(fakeMode),
 		packerKeyManager: packerKeyManager,
 		packService:      packService,
-		txpool:           txpool,
+		txContainer:      txContainer,
 		chain:            chain,
 		packerGroupSize:  packerGroupSize,
 		interval:         interval,
@@ -195,14 +194,14 @@ func (w *worker) stop() {
 func (w *worker) loop() {
 	for {
 		select {
-		case <-w.txpool.newTxCh:
-			if w.txpool.Count() > DefaultPkgSize {
-				if txs, err := w.txpool.Pop(DefaultPkgSize); err == nil {
+		case <-w.txContainer.newTxCh:
+			if w.txContainer.Count() > DefaultPkgSize {
+				if txs, err := w.txContainer.Pop(DefaultPkgSize); err == nil {
 					w.packAndSave(txs)
 				}
 			}
 		case <-w.timeout.C:
-			if txs, err := w.txpool.Pop(w.txpool.Count()); err == nil && len(txs) > 0 {
+			if txs, err := w.txContainer.Pop(w.txContainer.Count()); err == nil && len(txs) > 0 {
 				w.packAndSave(txs)
 			}
 		case <-w.ctx.Done():
@@ -233,7 +232,7 @@ func (w *worker) pack(txs []*types.Transaction) (*types.TxPackage, error) {
 	var removes []int
 	currentBlock := w.chain.CurrentBlock()
 	if currentBlock == nil {
-		return nil, ErrBlockNotFound
+		return nil, pool.ErrBlockNotFound
 	}
 
 	// Do another check, because the packer information may have changed during the period from receiving transaction to packing transaction.
@@ -281,8 +280,6 @@ func (w *worker) pack(txs []*types.Transaction) (*types.TxPackage, error) {
 
 	newPkg.ReceivedAt = time.Now()
 	log.Info("Generate a new tx package", "pkgHash", newPkg.Hash(), "blockHash", newPkg.BlockFullHash(), "txCount", len(newPkg.Transactions()))
-	go w.newPkgEventFeed.Send(packer.NewPackageEvent{
-		Pkgs: []*types.TxPackage{newPkg},
-	})
+	go w.newPkgEventFeed.Send(types.TxPackages{newPkg})
 	return newPkg, nil
 }

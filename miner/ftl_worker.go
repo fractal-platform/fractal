@@ -379,10 +379,8 @@ func (w *worker) resultLoop() {
 			block.Header.GasUsed = *usedGas
 
 			// set reward
-			for _, confirmedBlock := range confirmedBlocks {
-				state.ConfirmReward(stateDb, block, confirmedBlock)
-			}
-			state.MiningReward(stateDb, block)
+			state.AddBlockReward(stateDb, block, confirmedBlocks)
+
 			block.Header.StateHash = stateDb.IntermediateRoot(true)
 
 			//
@@ -552,44 +550,6 @@ func (w *worker) packTransactions(block *types.Block, prevStateDb *state.StateDB
 
 	return w.flattenTransactionsByPrice(block, queue, prevStateDb, stateDb)
 }
-
-//func (w *worker) flattenTransactions(queue map[common.Address][]pool.Element, prevStateDb *state.StateDB, stateDb *state.StateDB) types.Transactions {
-//	var packedTxs types.Transactions
-//
-//	for addr, txs := range queue {
-//		currentNonceSet := stateDb.TxNonceSet(addr)
-//		if currentNonceSet == nil {
-//			// nonceSet is nil, the addr has no state, so we don't pack transaction for him
-//			continue
-//		}
-//
-//		nonceSet := nonces.NewNonceSet(currentNonceSet) // make a new nonceSet to guarantee readonly (used here only for queries)
-//		if prevStateDb != nil {
-//			nonceSet.Reset(prevStateDb.GetNonce(addr))
-//		}
-//		balance := stateDb.GetBalance(addr)
-//
-//		for _, tx := range txs {
-//			cost := tx.(*types.Transaction).Cost()
-//			if cost.Cmp(balance) > 0 {
-//				log.Info("ignore tx: insufficient balance", "address", addr, "balance", balance.Uint64(), "cost", cost.Uint64())
-//				continue
-//			}
-//
-//			searchResult := nonceSet.Search(tx.Nonce(), w.chain.GetChainConfig().MaxNonceBitLength)
-//			if searchResult != nonces.NotContainedAndAllowed {
-//				log.Info("ignore tx: nonce error", "nonce", tx.Nonce(), "addr", addr, "searchResult", searchResult)
-//				continue
-//			}
-//			packedTxs = append(packedTxs, tx.(*types.Transaction))
-//		}
-//		log.Debug("flattenTransactions: nonceSet info", "start", nonceSet.Start, "bitMask", hexutil.Encode(nonceSet.BitMask), "length", nonceSet.Length)
-//	}
-//
-//	log.Debug("flattenTransactions: tx packed", "num", len(packedTxs))
-//
-//	return packedTxs
-//}
 
 func (w *worker) flattenTransactionsByPrice(block *types.Block, queue map[common.Address][]pool.Element, prevStateDb *state.StateDB, stateDb *state.StateDB) types.Transactions {
 	var packedTxs types.Transactions

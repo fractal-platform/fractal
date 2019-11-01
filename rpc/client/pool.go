@@ -5,9 +5,10 @@
 package rpcclient
 
 import (
-	"github.com/fractal-platform/fractal/utils/log"
 	"sync"
 	"time"
+
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 type RpcConnection struct {

@@ -5,9 +5,10 @@
 package sync
 
 import (
+	"time"
+
 	"github.com/fractal-platform/fractal/ftl/protocol"
 	"github.com/fractal-platform/fractal/utils/log"
-	"time"
 )
 
 type fetchResult struct {

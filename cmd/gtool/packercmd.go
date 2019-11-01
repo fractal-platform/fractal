@@ -1,20 +1,13 @@
 package main
 
-/*
-#cgo CFLAGS: -I../../transaction/txexec
-#cgo LDFLAGS: -L../../transaction/txexec -lwasmlib
-#include <stdlib.h>
-
-void gen_action_bytes(unsigned char *abiBytes, int abiLength, unsigned char *funcNameBytes, int funcNameLength, unsigned char *jsonBytes, int jsonLength, void** actionBytes, int* actionLength);
-*/
-import "C"
 import (
 	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"io/ioutil"
 	"math/big"
 	"path"
 	"strconv"
-	"unsafe"
 
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
@@ -22,6 +15,8 @@ import (
 	"github.com/fractal-platform/fractal/keys"
 	"github.com/fractal-platform/fractal/params"
 	"github.com/fractal-platform/fractal/rpc/client"
+	"github.com/fractal-platform/fractal/utils"
+	"github.com/fractal-platform/fractal/utils/abi"
 	"github.com/fractal-platform/fractal/utils/log"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -124,7 +119,7 @@ func setPacker(ctx *cli.Context) error {
 	rpc := ctx.GlobalString(RpcFlag.Name)
 
 	abiFile := ctx.GlobalString(AbiFlag.Name)
-	abi, _ := ioutil.ReadFile(abiFile)
+	abidef, _ := ioutil.ReadFile(abiFile)
 
 	packerId := uint32(ctx.GlobalUint64(PackerIdFlag.Name))
 	packerRpcAddressString := ctx.GlobalString(PackerRpcAddressFlag.Name)
@@ -148,17 +143,33 @@ func setPacker(ctx *cli.Context) error {
 	argsString := buffer.String()
 	log.Info("generate args string ok", "argsString", argsString)
 
-	args := []byte(argsString)
-	action := []byte("setkey")
-	var actionBytes unsafe.Pointer
-	var actionLength C.int
-	var actionSlice []byte
-	C.gen_action_bytes((*C.uchar)(&abi[0]), C.int(len(abi)), (*C.uchar)(&action[0]), C.int(len(action)), (*C.uchar)(&args[0]), C.int(len(args)), &actionBytes, (*C.int)(&actionLength))
-	for i := C.int(0); i < actionLength; i++ {
-		ptr := (*C.uchar)(unsafe.Pointer(uintptr(actionBytes) + uintptr(i)))
-		actionSlice = append(actionSlice, byte(*ptr))
+	actionUint, err := utils.String2Uint64("setkey")
+	if err != nil {
+		log.Error("parse action failed", "err", err)
+		return err
 	}
-	C.free(actionBytes)
+	actionBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(actionBytes, actionUint) // use LittleEndian
+
+	var argsData interface{}
+	err = json.Unmarshal([]byte(argsString), &argsData)
+	if err != nil {
+		log.Error("unmarshal args failed", "err", err)
+		return err
+	}
+
+	writer := bytes.NewBuffer(actionBytes)
+	serializer, err := abi.NewAbiSerializer(string(abidef))
+	if err != nil {
+		log.Error("setPacker NewAbiSerializer failed", "err", err)
+		return err
+	}
+	err = serializer.Serialize(argsData, "setkey", writer)
+	if err != nil {
+		log.Error("serialize args failed", "err", err)
+		return err
+	}
+	actionSlice := writer.Bytes()
 	log.Info("generate action bytes ok", "actionSlice", hexutil.Encode(actionSlice))
 
 	toAddr := common.HexToAddress(params.PackerKeyContractAddr)

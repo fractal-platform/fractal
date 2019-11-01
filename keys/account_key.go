@@ -2,12 +2,13 @@ package keys
 
 import (
 	"encoding/json"
+	"io/ioutil"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/crypto"
 	"github.com/fractal-platform/fractal/utils/log"
 	"github.com/pborman/uuid"
-	"io/ioutil"
 )
 
 type AccountKey struct {

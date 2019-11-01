@@ -1,17 +1,15 @@
 package pool
 
 import (
+	"os"
+	"testing"
+	"time"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/utils/log"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"reflect"
-	"testing"
-	"time"
 )
-
-var TxPackageType = reflect.TypeOf(types.TxPackage{})
 
 func TestInsertAndLoad(t *testing.T) {
 	log.SetDefaultLogger(log.InitLog15Logger(log.LvlDebug, os.Stdout))

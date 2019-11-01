@@ -19,6 +19,7 @@ package trie
 import (
 	"errors"
 	"fmt"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/dbwrapper"
 	"github.com/fractal-platform/fractal/utils/log"
@@ -92,7 +93,7 @@ func NewSync(root common.Hash, database DatabaseReader, callback LeafCallback) *
 
 // AddSubTrie registers a new trie to the sync code, rooted at the designated parent.
 func (s *Sync) AddSubTrie(root common.Hash, depth int, parent common.Hash, callback LeafCallback) {
-	log.Info("Add subTrie","root",root)
+	log.Info("Add subTrie", "root", root)
 	// Short circuit if the trie is empty or already known
 	if root == emptyRoot {
 		return
@@ -103,7 +104,7 @@ func (s *Sync) AddSubTrie(root common.Hash, depth int, parent common.Hash, callb
 	key := root.Bytes()
 	blob, _ := s.database.Get(key)
 	if local, err := decodeNode(key, blob, 0); local != nil && err == nil {
-		log.Info("Have the trie node","node=",local)
+		log.Info("Have the trie node", "node=", local)
 		return
 	}
 	// Assemble the new sub-trie sync request
@@ -163,7 +164,7 @@ func (s *Sync) Missing(max int) []common.Hash {
 	for !s.queue.Empty() && (max == 0 || len(requests) < max) {
 		requests = append(requests, s.queue.PopItem().(common.Hash))
 	}
-	log.Info("Now missing node","length",len(requests))
+	log.Info("Now missing node", "length", len(requests))
 	return requests
 }
 
@@ -187,7 +188,7 @@ func (s *Sync) Process(results []SyncResult) (bool, int, error) {
 		// If the item is a raw entry request, commit directly
 		if request.raw {
 			request.data = item.Data
-			log.Info("Commit a raw entry node","hash",request.hash)
+			log.Info("Commit a raw entry node", "hash", request.hash)
 			s.commit(request)
 			committed = true
 			continue
@@ -200,7 +201,7 @@ func (s *Sync) Process(results []SyncResult) (bool, int, error) {
 		request.data = item.Data
 
 		// Create and schedule a request for all the children nodes
-		log.Info("Create and schedule a request for all the children nodes","node",request.hash)
+		log.Info("Create and schedule a request for all the children nodes", "node", request.hash)
 		requests, err := s.children(request, node)
 		if err != nil {
 			return committed, i, err
@@ -320,7 +321,6 @@ func (s *Sync) children(req *request, object node) ([]*request, error) {
 func (s *Sync) commit(req *request) (err error) {
 	// Write the node content to the membatch
 	//log.Info("Sync trie commit Ok","request=",req.hash,"parent=",req.parents,"data=",req.data)
-
 
 	s.membatch.batch[req.hash] = req.data
 	s.membatch.order = append(s.membatch.order, req.hash)

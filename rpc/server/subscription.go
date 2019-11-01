@@ -6,11 +6,12 @@ import (
 	crand "crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/fractal-platform/fractal/rpc"
 	"math/rand"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fractal-platform/fractal/rpc"
 )
 
 var (

@@ -7,13 +7,14 @@ package rpcserver
 import (
 	"context"
 	"fmt"
-	"github.com/fractal-platform/fractal/rpc"
-	"github.com/fractal-platform/fractal/utils/log"
 	"reflect"
 	"runtime"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/fractal-platform/fractal/rpc"
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 // callback is a method callback which was registered in the server

@@ -1,4 +1,4 @@
-package transaction
+package pool
 
 import (
 	"errors"
@@ -7,7 +7,6 @@ import (
 	"github.com/fractal-platform/fractal/chain"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/config"
-	"github.com/fractal-platform/fractal/core/pool"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/transaction/txexec"
 	"github.com/fractal-platform/fractal/utils/log"
@@ -35,35 +34,31 @@ var (
 	// than some meaningful limit a user might use. This is not a consensus error
 	// making the transaction invalid, rather a DOS protection.
 	ErrOversizedData = errors.New("oversized data")
-
-	// ErrInsufficientFunds is returned if the total cost of executing a transaction
-	// is higher than the balance of the user's account.
-	ErrInsufficientFunds = errors.New("insufficient funds for gas limit * price + value")
 )
 
-type TxHelper struct {
+type txHelper struct {
 	signer types.Signer
 }
 
-func (h *TxHelper) Reset(p pool.Pool, newHead *types.Block) {
+func (h *txHelper) reset(p Pool, newHead *types.Block) {
 	// Traversing the transactions in the block, comparing the nonce
 	for _, newTx := range newHead.Body.Transactions {
 		address, _ := types.Sender(h.signer, newTx)
 		if newTx.Nonce() >= p.StateUnsafe().GetNonce(address) {
 			// Put into the p, this happens only for non-local blocks
-			p.AddUnsafe([]pool.Element{newTx}, false)
+			p.AddUnsafe([]Element{newTx}, false)
 		}
 	}
 }
 
-func (h *TxHelper) Validate(p pool.Pool, ele pool.Element, currentState pool.StateDB, blockChain pool.BlockChain) error {
+func (h *txHelper) validate(p Pool, ele Element, currentState StateDB, blockChain BlockChain) error {
 	tx := (ele).(*types.Transaction)
 
 	if !tx.Broadcast() {
-		return pool.ErrIsNotAPacker
+		return ErrIsNotAPacker
 	}
 
-	from, err := h.Sender(ele)
+	from, err := h.sender(ele)
 	if err != nil {
 		return err
 	}
@@ -94,34 +89,35 @@ func (h *TxHelper) Validate(p pool.Pool, ele pool.Element, currentState pool.Sta
 
 	if stateDB, _, ok := p.GetStateBeforeCacheHeight(); ok {
 		if stateDB.GetNonce(from) > ele.Nonce() {
-			return pool.ErrNonceTooLow
+			return ErrNonceTooLow
 		}
 	}
 
 	return nil
 }
 
-func (h *TxHelper) Sender(ele pool.Element) (common.Address, error) {
+func (h *txHelper) sender(ele Element) (common.Address, error) {
 	tx := (ele).(*types.Transaction)
-	return h.signer.Sender(tx)
+	return types.Sender(h.signer, tx)
 }
 
-func NewTxPool(conf *config.Config, c *chain.BlockChain) pool.Pool {
+func NewTxPool(conf *config.Config, c *chain.BlockChain) Pool {
 	s := types.MakeSigner(conf.ChainConfig.TxSignerType, conf.ChainConfig.ChainID)
-	helper := &TxHelper{
+	helper := &txHelper{
 		signer: s,
 	}
 	if conf.TxPoolConfig.FakeMode {
-		return pool.NewFakePool(conf.TxPoolConfig.StartCleanTime, conf.TxPoolConfig.CleanPeriod, conf.TxPoolConfig.LeftEleNumEachAddr, helper)
+		return NewFakePool(conf.TxPoolConfig.StartCleanTime, conf.TxPoolConfig.CleanPeriod, conf.TxPoolConfig.LeftEleNumEachAddr, helper)
 	}
-	return pool.NewPool(*conf.TxPoolConfig, c, TransactionType, helper)
+	return NewPool(*conf.TxPoolConfig, c, TransactionType, helper)
 }
 
-func ElemsToTxs(elems []pool.Element) []*types.Transaction {
+func ElemsToTxs(elems []Element) []*types.Transaction {
 	if len(elems) == 0 {
 		return make([]*types.Transaction, 0)
 	}
-	if !IsTx(elems[0]) {
+
+	if _, ok := elems[0].(*types.Transaction); !ok {
 		log.Error("the element type is not *types.Transaction.", "element", elems[0]) // should never happen.
 		return nil
 	}
@@ -130,9 +126,4 @@ func ElemsToTxs(elems []pool.Element) []*types.Transaction {
 		txs[i] = elem.(*types.Transaction)
 	}
 	return txs
-}
-
-func IsTx(elem pool.Element) bool {
-	_, ok := elem.(*types.Transaction)
-	return ok
 }

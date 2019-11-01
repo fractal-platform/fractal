@@ -51,6 +51,7 @@ VERSION:
 	app.Flags = append(app.Flags, configFileFlag, genesisAllocFlag, checkPointsFlag)
 	app.Flags = append(app.Flags, generalFlags...)
 	app.Flags = append(app.Flags, miningEnabledFlag, packEnabledFlag, packerIdFlag, unlockedAccountFlag)
+	app.Flags = append(app.Flags, unlockCheckPointPriKeyFlag)
 	app.Flags = append(app.Flags, rpcFlags...)
 	app.Flags = append(app.Flags, networkFlags...)
 	app.Flags = append(app.Flags, metricsFlags...)

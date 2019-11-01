@@ -7,14 +7,17 @@ package network
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/deckarep/golang-set"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/ftl/protocol"
 	"github.com/fractal-platform/fractal/p2p"
 	"github.com/fractal-platform/fractal/utils/log"
-	"github.com/deckarep/golang-set"
-	"sync"
-	"time"
+	"github.com/ratelimit"
 )
 
 var (
@@ -29,6 +32,11 @@ const (
 	maxKnownTxPackages = 4096  // Maximum tx package hashes to keep in the known list (prevent DOS)
 
 	handshakeTimeout = 5 * time.Second
+
+	// for rate limit
+	rate       = 1 << 20
+	capability = 1 << 21
+	waitTime   = time.Duration(90 * time.Second)
 )
 
 // PeerInfo represents a short summary of the Fractal sub-protocol metadata known
@@ -48,6 +56,8 @@ type Peer struct {
 	*p2p.Peer
 	rw p2p.MsgReadWriter
 
+	reqID uint64
+
 	headFullHash   common.Hash
 	headSimpleHash common.Hash
 	headHeight     uint64
@@ -56,20 +66,26 @@ type Peer struct {
 
 	pipe *taskPipe
 
+	// for rate limit
+	bucket *ratelimit.Bucket
+
 	knownTxs        mapset.Set    // Set of transaction hashes known to be known by this peer
 	knownTxPackages mapset.Set    // Set of tx package hashes known to be known by this peer
 	knownBlocks     mapset.Set    // Set of block hashes known to be known by this peer
 	term            chan struct{} // Termination channel to stop the broadcaster
 	closed          bool
+	//lacking         map[common.Hash]struct{} // Set of hashes not to request (didn't have previously)
 }
 
-func NewPeer(version int, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
+func NewPeer(version int, p *p2p.Peer, rw p2p.MsgReadWriter, bucket *ratelimit.Bucket) *Peer {
 	return &Peer{
 		id:              fmt.Sprintf("%x", p.ID().Bytes()[:8]),
 		version:         version,
 		Peer:            p,
 		rw:              rw,
+		reqID:           0,
 		pipe:            newTaskPipe(),
+		bucket:          bucket,
 		knownTxs:        mapset.NewSet(),
 		knownBlocks:     mapset.NewSet(),
 		knownTxPackages: mapset.NewSet(),
@@ -91,6 +107,10 @@ func (p *Peer) GetID() string {
 
 func (p *Peer) GetRW() p2p.MsgReadWriter {
 	return p.rw
+}
+
+func (p *Peer) nextRequestID() uint64 {
+	return atomic.AddUint64(&p.reqID, 1)
 }
 
 // Info gathers and returns a collection of metadata known about a peer.
@@ -200,33 +220,18 @@ func (p *Peer) HasTxPackage(hash common.Hash) bool {
 // SendNewBlock propagates an entire block to a remote peer.
 func (p *Peer) SendNewBlock(block *types.Block) error {
 	p.knownBlocks.Add(block.FullHash())
-	return p2p.Send(p.rw, protocol.NewBlockMsg, []protocol.NewBlockData{{Block: block}})
+	return p2p.Send(p.rw, protocol.NewBlockMsg, block)
 }
 
 // RequestOneBlock is a wrapper around the block query functions to fetch a
 // single block. It is used solely by the fetcher.
 func (p *Peer) RequestOneBlock(hash common.Hash) error {
-	p.Log().Debug("Fetching single block", "Hash", hash)
-	return p2p.Send(p.rw, protocol.GetBlocksMsg, &protocol.GetBlocksData{OriginHash: hash, Depth: uint64(1), Reverse: false, RoundFrom: 0, RoundTo: 0})
-}
-
-// RequestBlocksByHash fetches a batch of blocks corresponding to the
-// specified block query, based on the Hash of an origin block.
-func (p *Peer) RequestBlocksByHash(origin common.Hash, amount int, reverse bool) error {
-	p.Log().Debug("Fetching batch of blocks", "count", amount, "from-Hash", origin, "reverse", reverse)
-	return p2p.Send(p.rw, protocol.GetBlocksMsg, &protocol.GetBlocksData{OriginHash: origin, Depth: uint64(amount), Reverse: reverse, RoundFrom: 0, RoundTo: 0})
-}
-
-// RequestBlocksByRoundRange fetches a batch of blocks corresponding to the
-// specified block query, based on the Round of an origin block.
-func (p *Peer) RequestBlocksByRoundRange(roundFrom uint64, roundTo uint64) error {
-	p.Log().Debug("Fetching batch of blocks", "roundFrom", roundFrom, "roundTo", roundTo)
-	return p2p.Send(p.rw, protocol.GetBlocksMsg, &protocol.GetBlocksData{RoundFrom: roundFrom, RoundTo: roundTo, OriginHash: common.Hash{}, Depth: uint64(0), Reverse: false})
+	return p2p.Send(p.rw, protocol.BlockReqMsg, hash)
 }
 
 // SendBlocks sends a batch of blocks to the remote peer.
-func (p *Peer) SendBlocks(blocks types.Blocks) error {
-	return p2p.Send(p.rw, protocol.BlocksMsg, blocks)
+func (p *Peer) SendBlock(block *types.Block) error {
+	return p2p.Send(p.rw, protocol.BlockRspMsg, block)
 }
 
 // SendTransactions sends transactions to the peer and includes the hashes
@@ -248,13 +253,13 @@ func (p *Peer) SendTxPackageHash(hash common.Hash) error {
 // single tx package.
 func (p *Peer) RequestTxPackage(hash common.Hash) error {
 	p.Log().Info("Fetching tx package", "Hash", hash)
-	return p2p.Send(p.rw, protocol.GetTxPackageMsg, hash)
+	return p2p.Send(p.rw, protocol.TxPackageReqMsg, hash)
 }
 
 // SendTxPackage sends tx package to the peer and includes the hashes
 // in its tx package Hash set for future reference.
 func (p *Peer) SendTxPackage(pkg *types.TxPackage) error {
-	return p2p.Send(p.rw, protocol.TxPackageMsg, pkg)
+	return p2p.Send(p.rw, protocol.TxPackageRspMsg, pkg)
 }
 
 // RequestNodeData fetches a batch of arbitrary data from a node's known state
@@ -262,7 +267,7 @@ func (p *Peer) SendTxPackage(pkg *types.TxPackage) error {
 func (p *Peer) RequestNodeData(hashes []common.Hash) error {
 	p.Log().Info("Fetching batch of state data", "count", len(hashes))
 
-	err := p2p.Send(p.rw, protocol.GetNodeDataMsg, hashes)
+	err := p2p.Send(p.rw, protocol.NodeDataReqMsg, hashes)
 	if err != nil {
 		p.Log().Error("Failed Request Node Date", "hashes", hashes, "error", err)
 	}
@@ -271,8 +276,11 @@ func (p *Peer) RequestNodeData(hashes []common.Hash) error {
 
 // SendNodeDataRLP sends a batch of arbitrary internal data, corresponding to the
 // hashes requested.
-func (p *Peer) SendNodeData(data [][]byte) error {
-	err := p2p.Send(p.rw, protocol.NodeDataMsg, data)
+func (p *Peer) SendNodeData(data [][]byte, bytes int64) error {
+	// for rate limit
+	p.bucket.WaitMaxDuration(bytes, waitTime)
+
+	err := p2p.Send(p.rw, protocol.NodeDataRspMsg, data)
 	if err != nil {
 		p.Log().Error("Failed Send Node Date", "err", err)
 	}
@@ -282,49 +290,60 @@ func (p *Peer) SendNodeData(data [][]byte) error {
 }
 
 func (p *Peer) RequestSyncHashList(syncStage protocol.SyncStage, hashType protocol.SyncHashType, hashEFrom protocol.HashElem, hashETo protocol.HashElem) error {
-	p.Log().Info("Request sync hash list", "stage", syncStage, "type", hashType, "hashEFrom", hashEFrom, "hashETo", hashETo)
-	return p2p.Send(p.rw, protocol.SyncHashListReqMsg, protocol.SyncHashListReq{
-		Stage:      syncStage,
-		Type:       hashType,
-		HashFrom:   hashEFrom.Hash,
-		HeightFrom: hashEFrom.Height,
-		HashTo:     hashETo.Hash,
-		HeightTo:   hashETo.Height,
-	})
+	reqID := p.nextRequestID()
+	req := protocol.SyncHashListReq{
+		RequestData: protocol.RequestData{ReqID: reqID},
+		Stage:       syncStage,
+		Type:        hashType,
+		HashFrom:    hashEFrom.Hash,
+		HeightFrom:  hashEFrom.Height,
+		HashTo:      hashETo.Hash,
+		HeightTo:    hashETo.Height,
+	}
+	p.Log().Info("Request sync hash list", "reqID", reqID, "req", req)
+	return p2p.Send(p.rw, protocol.SyncHashListReqMsg, req)
 }
 
-func (p *Peer) SendSyncHashList(syncStage protocol.SyncStage, hashType protocol.SyncHashType, hashList protocol.HashElems) error {
-	p.Log().Debug("Send short Hash list for sync", "stage", syncStage, "type", hashType)
-	return p2p.Send(p.rw, protocol.SyncHashListResMsg, protocol.SyncHashListRsp{
-		Stage:  syncStage,
-		Type:   hashType,
-		Hashes: hashList,
-	})
+func (p *Peer) SendSyncHashList(reqID uint64, syncStage protocol.SyncStage, hashType protocol.SyncHashType, hashList protocol.HashElems) error {
+	rsp := protocol.SyncHashListRsp{
+		RequestData: protocol.RequestData{ReqID: reqID},
+		Stage:       syncStage,
+		Type:        hashType,
+		Hashes:      hashList,
+	}
+	p.Log().Info("Send short Hash list response", "reqID", reqID, "stage", syncStage, "type", hashType, "hashes", len(hashList))
+	return p2p.Send(p.rw, protocol.SyncHashListRspMsg, rsp)
 }
 
-// RequestSyncBlock fetches blocks for sync
-func (p *Peer) RequestSyncPreBlocksForState(hash common.Hash) error {
-	p.Log().Info("request pre blocks for state")
-	return p2p.Send(p.rw, protocol.SyncPreBlocksForStateReqMsg, hash)
+func (p *Peer) RequestSyncHashTree(hashFrom common.Hash, hashTo common.Hash) error {
+	reqID := p.nextRequestID()
+	req := protocol.SyncHashTreeReq{
+		RequestData: protocol.RequestData{ReqID: reqID},
+		HashFrom:    hashFrom,
+		HashTo:      hashTo,
+	}
+	p.Log().Info("Request sync hash tree", "reqID", reqID, "req", req)
+	return p2p.Send(p.rw, protocol.SyncHashTreeReqMsg, req)
 }
 
-//
-func (p *Peer) SendSyncPreBlocksForState(blocks []*types.Block, pkgs []*types.TxPackage) error {
-	p.Log().Debug("send pre blocks for state")
-	return p2p.Send(p.rw, protocol.SyncPreBlocksForStateRspMsg, protocol.FetchBlockRsp{
-		Blocks:     blocks,
-		TxPackages: pkgs,
-	})
+func (p *Peer) SendSyncHashTree(reqID uint64, tree types.HashTree, point types.TreePoint) error {
+	rsp := protocol.SyncHashTreeRsp{
+		RequestData: protocol.RequestData{ReqID: reqID},
+		TreePoint:   point,
+		HashTree:    tree,
+	}
+	p.Log().Info("Send Hash tree response", "reqID", reqID, "TreePoint", point, "HashTree", tree)
+	return p2p.Send(p.rw, protocol.SyncHashTreeRspMsg, rsp)
 }
 
-func (p *Peer) RequestSyncPostBlocksForState(hashEFrom protocol.HashElem, hashETo protocol.HashElem) error {
-	p.Log().Debug("Sync post blocks for state")
-	return p2p.Send(p.rw, protocol.SyncPostBlocksForStateReqMsg, protocol.IntervalHashReq{HashEFrom: hashEFrom, HashETo: hashETo})
+func (p *Peer) RequestSyncBestPeerBlocks(hashEFrom protocol.HashElem, hashETo protocol.HashElem) error {
+	p.Log().Debug("Sync best peer blocks")
+	return p2p.Send(p.rw, protocol.SyncBestPeerBlocksReqMsg, protocol.IntervalHashReq{RequestData: protocol.RequestData{ReqID: p.nextRequestID()}, HashEFrom: hashEFrom, HashETo: hashETo})
 }
 
-func (p *Peer) SendSyncPostBlocksForState(blocks types.Blocks, pkgs []*types.TxPackage, round uint64, finished bool) error {
-	p.Log().Debug("send blocks for state")
-	return p2p.Send(p.rw, protocol.SyncPostBlocksForStateRspMsg, protocol.FetchBlockRsp{
+func (p *Peer) SendSyncBestPeerBLocks(blocks types.Blocks, pkgs []*types.TxPackage, round uint64, finished bool) error {
+	p.Log().Debug("send best peer blocks")
+	return p2p.Send(p.rw, protocol.SyncBestPeerBlocksRspMsg, protocol.FetchBlockRsp{
 		Blocks:     blocks,
 		TxPackages: pkgs,
 		RoundTo:    round,
@@ -334,33 +353,30 @@ func (p *Peer) SendSyncPostBlocksForState(blocks types.Blocks, pkgs []*types.TxP
 
 func (p *Peer) RequestSyncPkgs(stage protocol.SyncStage, hashes []common.Hash) error {
 	log.Debug("Request packages", "stage", stage, "length", len(hashes))
-	return p2p.Send(p.rw, protocol.GetPkgsForBlockSyncMsg, protocol.SyncPkgsReq{
-		Stage:     stage,
-		PkgHashes: hashes,
-	})
+	return p2p.Send(p.rw, protocol.PkgsForBlockSyncReqMsg, protocol.SyncPkgsReq{RequestData: protocol.RequestData{ReqID: p.nextRequestID()}, Stage: stage, PkgHashes: hashes})
 }
 
-func (p *Peer) SendSyncPkgs(fetchPkgsRsp protocol.SyncPkgsRsp) error {
+func (p *Peer) SendSyncPkgs(fetchPkgsRsp protocol.SyncPkgsRsp, size int64) error {
+	// for rate limit
+	p.bucket.WaitMaxDuration(int64(size), waitTime)
+
 	p.Log().Debug("Send pkgs for sync")
-	return p2p.Send(p.rw, protocol.PkgsForBlockSyncMsg, fetchPkgsRsp)
+	return p2p.Send(p.rw, protocol.PkgsForBlockSyncRspMsg, fetchPkgsRsp)
 }
 
-func (p *Peer) RequestSyncBlocks(stage protocol.SyncStage, roundFrom uint64, roundTo uint64) error {
-	p.Log().Debug("Fetching batch of blocks with pkg", "roundFrom", roundFrom, "roundTo", roundTo)
-	return p2p.Send(p.rw, protocol.GetBlocksForBlockSyncMsg, &protocol.SyncBlocksReq{
-		Stage:     stage,
-		RoundFrom: roundFrom,
-		RoundTo:   roundTo,
-	})
+func (p *Peer) RequestSyncBlocks(stage protocol.SyncStage, reqsByHash []common.Hash, reqsFrom uint64, reqsTo uint64) error {
+	p.Log().Debug("Fetching batch of blocks with pkg", "reqsHash", len(reqsByHash), "reqs from", reqsFrom, "reqs to", reqsTo)
+	return p2p.Send(p.rw, protocol.BlocksForBlockSyncReqMsg, &protocol.SyncBlocksReq{RequestData: protocol.RequestData{ReqID: p.nextRequestID()}, Stage: stage, HashReqs: reqsByHash, RoundFrom: reqsFrom, RoundTo: reqsTo})
 }
 
-func (p *Peer) SendSyncBlocks(stage protocol.SyncStage, blocks types.Blocks, roundFrom uint64, roundTo uint64) error {
+func (p *Peer) SendSyncBlocks(stage protocol.SyncStage, reqID uint64, blocks types.Blocks, roundFrom uint64, roundTo uint64) error {
 	p.Log().Debug("send blocks for sync")
-	return p2p.Send(p.rw, protocol.BlocksForBlockSyncMsg, protocol.SyncBlocksRsp{
-		Stage:     stage,
-		Blocks:    blocks,
-		RoundFrom: roundFrom,
-		RoundTo:   roundTo,
+	return p2p.Send(p.rw, protocol.BlocksForBlockSyncRspMsg, protocol.SyncBlocksRsp{
+		RequestData: protocol.RequestData{ReqID: reqID},
+		Stage:       stage,
+		Blocks:      blocks,
+		RoundFrom:   roundFrom,
+		RoundTo:     roundTo,
 	})
 }
 

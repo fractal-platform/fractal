@@ -5,9 +5,10 @@
 package config
 
 import (
+	"time"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/utils/log"
-	"time"
 )
 
 type PoolConfig struct {

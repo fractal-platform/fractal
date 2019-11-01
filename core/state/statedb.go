@@ -32,10 +32,6 @@ var (
 
 	// emptyCode is the known hash of the empty WASM bytecode.
 	emptyCode = crypto.Keccak256Hash(nil)
-
-	miningRewardValue    = big.NewInt(5 * 1e9)
-	confirmRewardValue   = big.NewInt(1 * 1e9)
-	confirmedRewardValue = big.NewInt(1 * 1e9)
 )
 
 // StateDBs within the fractal protocol are used to store anything
@@ -790,17 +786,40 @@ func (s *StateDB) DumpAllState(path string) {
 	ioutil.WriteFile(path, data, 0644)
 }
 
-func MiningReward(state *StateDB, block *types.Block) {
+func miningReward(state *StateDB, block *types.Block, miningRewardValue *big.Int) {
 	// TODO: Delete log comment
 	//log.Info("mine reward", "coinbase", block.Header.Coinbase, "preBalance", state.GetBalance(block.Header.Coinbase))
-	addr := block.Header.Coinbase
-	state.AddBalance(addr, miningRewardValue)
+	state.AddBalance(block.Header.Coinbase, miningRewardValue)
 }
 
-func ConfirmReward(state *StateDB, block *types.Block, confirmedBlock *types.Block) {
+func confirmReward(state *StateDB, block *types.Block, confirmedBlock *types.Block, confirmRewardValue *big.Int, confirmedRewardValue *big.Int) {
 	// TODO: Delete log comment
 	//log.Info("confirm reward", "coinbase", block.Header.Coinbase, "preBalance", state.GetBalance(block.Header.Coinbase))
 	//log.Info("confirmed reward", "coinbase", confirmedBlock.Header.Coinbase, "preBalance", state.GetBalance(confirmedBlock.Header.Coinbase))
 	state.AddBalance(block.Header.Coinbase, confirmRewardValue)
 	state.AddBalance(confirmedBlock.Header.Coinbase, confirmedRewardValue)
+}
+
+func AddBlockReward(state *StateDB, block *types.Block, confirmedBlocks []*types.Block) {
+	currentMiningAwardCycleIndex := block.Header.Height / params.MiningAwardCycle
+	reductionTime := params.MaxMiningRewardReductionTimes
+	if currentMiningAwardCycleIndex < reductionTime {
+		reductionTime = currentMiningAwardCycleIndex
+	}
+
+	miningRewardValue := params.OriginalMiningRewardValue
+	confirmRewardValue := params.OriginalConfirmRewardValue
+	confirmedRewardValue := params.OriginalConfirmedRewardValue
+
+	for i := 0; i < int(reductionTime); i++ {
+		// reduce 10%
+		miningRewardValue = new(big.Int).Quo(new(big.Int).Mul(miningRewardValue, big.NewInt(9)), big.NewInt(10))
+		confirmRewardValue = new(big.Int).Quo(new(big.Int).Mul(confirmRewardValue, big.NewInt(9)), big.NewInt(10))
+		confirmedRewardValue = new(big.Int).Quo(new(big.Int).Mul(confirmedRewardValue, big.NewInt(9)), big.NewInt(10))
+	}
+
+	for _, confirmedBlock := range confirmedBlocks {
+		confirmReward(state, block, confirmedBlock, confirmRewardValue, confirmedRewardValue)
+	}
+	miningReward(state, block, miningRewardValue)
 }

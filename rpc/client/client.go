@@ -27,7 +27,6 @@ import (
 
 	"github.com/fractal-platform/fractal/rpc"
 	"github.com/fractal-platform/fractal/utils/log"
-
 	"golang.org/x/net/websocket"
 )
 
@@ -176,7 +175,7 @@ func DialWebsocket(ctx context.Context, endpoint, origin string) (*Client, error
 			origin = "http://" + strings.ToLower(origin)
 		}
 	}
-	config, err := websocket.NewConfig(endpoint + rpc.WebSocketPath, origin)
+	config, err := websocket.NewConfig(endpoint+rpc.WebSocketPath, origin)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +283,7 @@ func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadClos
 // DialHTTPWithClient creates a new RPC client that connects to an RPC server over HTTP
 // using the provided HTTP Client.
 func DialHTTPWithClient(endpoint string, client *http.Client) (*Client, error) {
-	req, err := http.NewRequest(http.MethodPost, endpoint + rpc.RPCPath, nil)
+	req, err := http.NewRequest(http.MethodPost, endpoint+rpc.RPCPath, nil)
 	if err != nil {
 		return nil, err
 	}

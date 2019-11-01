@@ -1,6 +1,8 @@
 package chain
 
 import (
+	"time"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/dbaccessor"
 	"github.com/fractal-platform/fractal/core/state"
@@ -8,7 +10,6 @@ import (
 	"github.com/fractal-platform/fractal/params"
 	"github.com/fractal-platform/fractal/utils"
 	"github.com/rcrowley/go-metrics"
-	"time"
 )
 
 // StateAt returns a new mutable state based on a particular point in time.

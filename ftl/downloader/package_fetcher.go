@@ -2,16 +2,17 @@ package downloader
 
 import (
 	"fmt"
+	"math"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/deckarep/golang-set"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/ftl/protocol"
 	"github.com/fractal-platform/fractal/rlp"
 	"github.com/fractal-platform/fractal/utils/log"
-	"github.com/deckarep/golang-set"
-	"math"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 // PkgsReq represents a set of packages grouped together
@@ -96,7 +97,7 @@ func newPkgsFetcher(peersManager *peersManager, autoStop bool, stage protocol.Sy
 
 // addReqs add a block request into hashReq set.
 func (pf *pkgsFetcher) addReqs(pkgHashes []common.Hash) {
-	pf.logger.Debug("pkgsFetcher receive a new reqs.", "len", len(pkgHashes))
+	pf.logger.Info("pkgsFetcher receive a new reqs.", "len", len(pkgHashes))
 	if len(pkgHashes) == 0 {
 		// indicate the first time
 		pf.newReq <- struct{}{}
@@ -248,7 +249,7 @@ func (pf *pkgsFetcher) runReqAssignLoop() {
 		}
 
 		select {
-		case <- timer.C:
+		case <-timer.C:
 			// continue
 			timer.Reset(60 * time.Second)
 
@@ -325,6 +326,8 @@ func (pf *pkgsFetcher) assignTasks() {
 // tasks in request array.Otherwise assign tasks which are not assigned according the cap of peers.
 func (pf *pkgsFetcher) fillTasks(n int, req *pkgsReq) bool {
 	// Refill available tasks from the scheduler.
+	pf.lock.Lock()
+	defer pf.lock.Unlock()
 	if len(pf.reqs) == 0 {
 		return true
 	}

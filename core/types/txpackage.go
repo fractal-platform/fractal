@@ -123,7 +123,7 @@ func (pkg *TxPackage) Hash() common.Hash {
 	if hash := pkg.hash.Load(); hash != nil {
 		return hash.(common.Hash)
 	}
-	h := rlpHash([]interface{}{
+	h := common.RlpHash([]interface{}{
 		pkg.data.Packer,
 		pkg.data.PackNonce,
 		pkg.data.Transactions,
@@ -137,7 +137,11 @@ func (pkg *TxPackage) Packer() common.Address       { return pkg.data.Packer }
 func (pkg *TxPackage) Nonce() uint64                { return pkg.data.PackNonce }
 func (pkg *TxPackage) Transactions() []*Transaction { return pkg.data.Transactions }
 func (pkg *TxPackage) BlockFullHash() common.Hash   { return pkg.data.BlockFullHash }
-func (pkg *TxPackage) GasPrice() *big.Int           { return common.Big0 } // to implement pool.Element interface
+
+func (pkg *TxPackage) GasPrice() *big.Int           {
+	// TxPackage does not use gas price for sorting. Just implement the pool.Element interface, and there is no practical meaning.
+	return common.Big0
+}
 
 func (pkg *TxPackage) AddTransactions(txs []*Transaction) []*Transaction {
 	if txs == nil {
@@ -296,7 +300,7 @@ func (defaultSigner) Hash(pkg *TxPackage) common.Hash {
 	for i, t := range txs {
 		txHashs[i] = t.Hash()
 	}
-	return rlpHash([]interface{}{
+	return common.RlpHash([]interface{}{
 		pkg.data.Packer,
 		pkg.data.PackNonce,
 		pkg.data.BlockFullHash,

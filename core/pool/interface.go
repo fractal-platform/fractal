@@ -38,6 +38,7 @@ func (s *EleByPrice) Pop() interface{} {
 	return x
 }
 
+// only used for transaction
 type ElementsByPriceAndNonce struct {
 	eles  map[common.Address][]Element // Per account nonce-sorted list of elements
 	heads EleByPrice                   // Next element for each unique account (price heap)
@@ -88,17 +89,11 @@ func (t *ElementsByPriceAndNonce) Shift() {
 type Element interface {
 	Nonce() uint64
 	Hash() common.Hash
-	GasPrice() *big.Int
+	GasPrice() *big.Int // For comparison and sorting, tx package can ignore it
 }
 
 type NewElemEvent struct {
 	Ems []Element
-}
-
-type Helper interface {
-	Reset(pool Pool, block *types.Block)                                           // Invoked when a new block coming, Reset already surrounded by pool's lock.
-	Validate(pool Pool, ele Element, currentState StateDB, chain BlockChain) error // When add a new element into pool, pool's user can provide some Validate logic.
-	Sender(ele Element) (common.Address, error)                                    // Sender is used to find the from address of the element.
 }
 
 type Pool interface {

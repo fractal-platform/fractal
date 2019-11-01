@@ -138,6 +138,8 @@ type Config struct {
 
 	KeyPass string
 
+	CheckPointPriKeyPass string
+
 	PkgCacheSize        int
 	PackerInfoCacheSize uint8
 
@@ -154,8 +156,6 @@ type Config struct {
 	TxPoolConfig   *PoolConfig `toml:",omitempty"`
 	PkgPoolConfig  *PoolConfig `toml:",omitempty"`
 	MinerKeyFolder string
-
-	CheckPoints *CheckPoints // checkPoints
 
 	SyncTest bool
 }

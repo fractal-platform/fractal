@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/fractal-platform/fractal/common"
-	"github.com/fractal-platform/fractal/crypto/sha3"
 	"github.com/fractal-platform/fractal/params"
 	"github.com/fractal-platform/fractal/rlp"
 )
@@ -40,7 +39,7 @@ type BlockHeader struct {
 }
 
 func (bh *BlockHeader) SimpleHash() common.Hash {
-	v := rlpHash([]interface{}{
+	v := common.RlpHash([]interface{}{
 		bh.ParentHash,
 		bh.Round,
 		bh.Sig,
@@ -51,7 +50,7 @@ func (bh *BlockHeader) SimpleHash() common.Hash {
 // Hash returns the keccak256 hash of full block.
 // The hash is computed on the first call and cached thereafter.
 func (bh *BlockHeader) FullHash() common.Hash {
-	v := rlpHash([]interface{}{
+	v := common.RlpHash([]interface{}{
 		bh.ParentHash,
 		bh.Round,
 		bh.Sig,
@@ -90,6 +89,7 @@ const (
 	NoBlockState BlockStateCheckedEnum = iota
 	HasBlockStateButNotChecked
 	BlockStateChecked
+
 )
 
 // Block represents a block in the Fractal blockchain.
@@ -102,6 +102,9 @@ type Block struct {
 	simpleHash atomic.Value
 	fullHash   atomic.Value
 	bloom      atomic.Value
+
+	// accHash
+	AccHash common.Hash
 
 	// whether the block state has been checked
 	StateChecked BlockStateCheckedEnum
@@ -134,15 +137,8 @@ func NewBlockWithHeader(header *BlockHeader) *Block {
 	return block
 }
 
-func rlpHash(x interface{}) (h common.Hash) {
-	hw := sha3.NewKeccak256()
-	rlp.Encode(hw, x)
-	hw.Sum(h[:0])
-	return h
-}
-
 func (b *Block) SignHashByte() []byte {
-	v := rlpHash([]interface{}{
+	v := common.RlpHash([]interface{}{
 		b.Header.ParentHash,
 		b.Header.Round,
 	})

@@ -2,10 +2,10 @@ package chain
 
 import (
 	"fmt"
-	"github.com/fractal-platform/fractal/core/config"
+
+	"github.com/deckarep/golang-set"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/utils"
-	"github.com/deckarep/golang-set"
 )
 
 // CheckGreedy checks greedy rules
@@ -27,7 +27,7 @@ func (bc *BlockChain) CheckGreedy(block *types.Block, mainBlock *types.Block, gr
 	if err != nil {
 		return false, err
 	}
-	if hopCount > greedy+1 {
+	if hopCount >= greedy {
 		return false, nil
 	}
 	return true, nil
@@ -73,13 +73,14 @@ func (bc *BlockChain) GetGreedyBlocks(greedy uint8) (blocks types.Blocks) {
 	var currentBlocks types.Blocks
 	currentBlock := bc.CurrentBlock()
 	// if current block is lower than the most top ,no need to mine block
-	if bc.chainConfig.CheckPointEnable {
-		highestCheckPoint := config.GetLatestCheckPoint(bc.checkPoints)
-		if currentBlock.Header.Height < highestCheckPoint.Height {
-			bc.logger.Info("current block is lower than the most top checkpoints, no need to mine block")
-			return currentBlocks
-		}
-	}
+	// TODO
+	//if bc.chainConfig.CheckPointEnable {
+	//	_, height := bc.GetLocalLatestCheckPoint()
+	//	if currentBlock.Header.Height < height {
+	//		bc.logger.Info("current block is lower than the most top checkpoints, no need to mine block")
+	//		return currentBlocks
+	//	}
+	//}
 	currentBlocks = append(currentBlocks, currentBlock)
 	blocks = append(blocks, currentBlock)
 	visitedBlockHashes.Add(currentBlock.FullHash())

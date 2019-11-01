@@ -66,6 +66,8 @@ var (
 
 	ErrBlockConsensusError = errors.New("Block consensus error")
 
+	ErrBlockNotMeetCheckPoint = errors.New("Block not meet check point")
+
 	ErrBlockTxHashError = errors.New("Block txHash error")
 
 	ErrBlockBloomError = errors.New("Block bloom error")
@@ -117,15 +119,16 @@ type BlockChain struct {
 	db          dbwrapper.Database // Low level persistent database to store final content in
 
 	// for block in blockchain
-	genesisBlock *types.Block
-	checkPoints  *config.CheckPoints // checkPoints
-	//fixPoint         atomic.Value        // FixPoint for last fast sync
+	genesisBlock     *types.Block
 	currentBlock     atomic.Value // Current head block of the block chain
 	blockCache       *lru.Cache   // Cache for the most recent block
 	mainBranchRecord *MainBranchRecord
 
 	// for state in blockchain
 	stateCache state.Database // State database to reuse between imports (contains state cache)
+
+	// for checkPoint in blockchain
+	checkPointHandler *checkPointHandler
 
 	// for pkg in blockchain
 	pkgCache           *lru.Cache
@@ -139,6 +142,7 @@ type BlockChain struct {
 
 	// for depend process
 	futureBlocks               map[common.Hash]*types.Blocks // confirmed(parent) block hash -> future block
+	futureBlockDependDepth     map[common.Hash]int
 	futureBlocksMutex          sync.RWMutex
 	futureTxPackageBlocks      map[common.Hash]*types.Blocks // tx package hash -> future block
 	futureTxPackageBlocksMutex sync.RWMutex
@@ -146,8 +150,10 @@ type BlockChain struct {
 	futureBlockTxPackagesMutex sync.RWMutex
 
 	// feed
-	chainUpdateFeed   event.Feed
-	blockExecutedFeed event.Feed
+	chainUpdateFeed     event.Feed
+	blockExecutedFeed   event.Feed
+	futureBlockFeed     event.Feed // future block to be processed
+	futureTxPackageFeed event.Feed // future tx package to be processed
 
 	// mutex
 	mu sync.RWMutex // global mutex for locking chain operations
@@ -155,7 +161,7 @@ type BlockChain struct {
 
 // NewBlockChain returns a fully initialised block chain using information
 // available in the database.
-func NewBlockChain(cfg *config.Config, db dbwrapper.Database, executor txexec.TxExecutor, checkPoints *config.CheckPoints, packerInfoCacheSize uint8) (*BlockChain, error) {
+func NewBlockChain(cfg *config.Config, db dbwrapper.Database, executor txexec.TxExecutor, packerInfoCacheSize uint8, checkPointNodeType types.CheckPointNodeTypeEnum) (*BlockChain, error) {
 	logger := log.NewSubLogger("m", "blockchain")
 
 	// create pkg cache
@@ -185,8 +191,7 @@ func NewBlockChain(cfg *config.Config, db dbwrapper.Database, executor txexec.Tx
 		chainConfig: cfg.ChainConfig,
 		db:          db,
 
-		checkPoints: checkPoints,
-		blockCache:  blockCache,
+		blockCache: blockCache,
 
 		stateCache: state.NewDatabase(db),
 
@@ -197,9 +202,10 @@ func NewBlockChain(cfg *config.Config, db dbwrapper.Database, executor txexec.Tx
 		txSigner:   types.MakeSigner(cfg.ChainConfig.TxSignerType, cfg.ChainConfig.ChainID),
 		txExecutor: executor,
 
-		futureBlocks:          make(map[common.Hash]*types.Blocks),
-		futureTxPackageBlocks: make(map[common.Hash]*types.Blocks),
-		futureBlockTxPackages: make(map[common.Hash]*types.TxPackages),
+		futureBlocks:           make(map[common.Hash]*types.Blocks),
+		futureBlockDependDepth: make(map[common.Hash]int),
+		futureTxPackageBlocks:  make(map[common.Hash]*types.Blocks),
+		futureBlockTxPackages:  make(map[common.Hash]*types.TxPackages),
 	}
 
 	// set genesis block
@@ -208,6 +214,11 @@ func NewBlockChain(cfg *config.Config, db dbwrapper.Database, executor txexec.Tx
 		return nil, ErrNoGenesis
 	}
 	bc.genesisBlock = bc.GetBlock(genesisHash)
+	bc.checkPointHandler, err = newCheckPointHandler(bc, checkPointNodeType)
+	if err != nil {
+		logger.Error("Create check point handle error", "err", err)
+		return nil, err
+	}
 
 	// set current block
 	headBlockHash := dbaccessor.ReadHeadBlockHash(bc.db)
@@ -243,6 +254,7 @@ func (bc *BlockChain) calcAndCheckState(block *types.Block) bool {
 	// get the block list for state calc
 	var checkBlocks []*types.Block
 	var checkBlock = block
+	var stateCheckedEnums []types.BlockStateCheckedEnum
 	for {
 		stateCheckedEnum := bc.GetBlockStateChecked(checkBlock)
 		// BlockStateChecked
@@ -253,29 +265,46 @@ func (bc *BlockChain) calcAndCheckState(block *types.Block) bool {
 		// HasBlockStateButNotChecked
 		if stateCheckedEnum == types.HasBlockStateButNotChecked {
 			checkBlocks = append([]*types.Block{checkBlock}, checkBlocks...)
+			stateCheckedEnums = append([]types.BlockStateCheckedEnum{stateCheckedEnum}, stateCheckedEnums...)
 			break
 		}
 
 		// NoBlockState
 		checkBlocks = append([]*types.Block{checkBlock}, checkBlocks...)
+		stateCheckedEnums = append([]types.BlockStateCheckedEnum{stateCheckedEnum}, stateCheckedEnums...)
+
 		// process parent
 		parent := bc.GetBlock(checkBlock.Header.ParentFullHash)
 		if parent == nil {
+			bc.logger.Error("calcAndCheckState parent nil", "parent", parent, "blockHash", checkBlock.FullHash(), "blockHeight", checkBlock.Header.Height)
 			return false
 		}
 		checkBlock = parent
 	}
 
 	// calc state and check
-	for _, checkBlock := range checkBlocks {
+ForAgain:
+	for i, checkBlock := range checkBlocks {
 		// Quickly validate the header and propagate the block if it passes
 		var confirmBlocks types.Blocks
+
 		for _, fullHash := range checkBlock.Header.Confirms {
 			var confirmBlock = bc.GetBlock(fullHash)
+			bc.logger.Info("test confirm hash", "checkHash", checkBlock.FullHash(), "checkHeight", checkBlock.Header.Height, "confirmHash", fullHash, "block", confirmBlock)
+
+			if confirmBlock == nil {
+				if stateCheckedEnums[i] == types.HasBlockStateButNotChecked {
+					continue ForAgain
+				} else {
+					bc.logger.Error("calcAndCheckState confirmBlock nil", "confirmBlock", confirmBlock, "stateCheckedEnum", stateCheckedEnums[i])
+					return false
+				}
+			}
 			confirmBlocks = append(confirmBlocks, confirmBlock)
 		}
 		state, receipts, executedTxs, bloom, err := bc.execBlock(checkBlock, confirmBlocks)
 		if err != nil {
+			bc.logger.Error("exec block failed", "blockHash", checkBlock.FullHash(), "blockHeight", checkBlock.Header.Height, "err", err)
 			return false
 		} else {
 			bc.insertBlockState(checkBlock, state, receipts, executedTxs, bloom)
@@ -289,8 +318,7 @@ func (bc *BlockChain) checkAndSetHead(block *types.Block) {
 	// calc current blocks
 	currentBlock := bc.currentBlock.Load().(*types.Block)
 	if block.CompareByHeightAndRoundAndSimpleHash(currentBlock) > 0 {
-		comPreFixBlock := bc.findCommonPreFix(block, currentBlock)
-		if bc.calcAndCheckState(block) && bc.checkCheckPoint(currentBlock, comPreFixBlock) {
+		if bc.calcAndCheckState(block) {
 			log.Info("Switch head block",
 				"oldHash", currentBlock.FullHash(), "oldHeight", currentBlock.Header.Height, "oldRound", currentBlock.Header.Round,
 				"newHash", block.FullHash(), "newHeight", block.Header.Height, "newRound", block.Header.Round)
@@ -357,10 +385,42 @@ func (bc *BlockChain) GetBlock(hash common.Hash) *types.Block {
 	block := types.NewBlockWithHeader(header)
 	block.Body = *dbaccessor.ReadBlockBody(bc.db, hash)
 	block.ReceivedPath, _ = dbaccessor.ReadBlockReceivePath(bc.db, hash)
+	block.AccHash = dbaccessor.ReadAccHash(bc.db, hash)
 
 	// Cache the found block for next time and return
 	bc.blockCache.Add(block.FullHash(), block)
 	return block
+}
+
+func (bc *BlockChain) CalcuAccHash(block *types.Block) error {
+	if block.AccHash != (common.Hash{}) {
+		bc.logger.Info("no need to calculate acc hash", "accHash", block.AccHash, "blockHash", block.FullHash())
+		return nil
+	}
+
+	var accHashes common.Hashes
+	var hashes common.Hashes
+	currentBlock := block
+	for _, confirmHash := range currentBlock.Header.Confirms {
+		confirmBlock := bc.GetBlock(confirmHash)
+		if confirmBlock == nil {
+			return ErrBlockNotFound
+		}
+		accHashes = append(accHashes, confirmBlock.AccHash)
+		hashes = append(hashes, confirmBlock.FullHash())
+	}
+	parentBlock := bc.GetBlock(currentBlock.Header.ParentFullHash)
+	if parentBlock == nil {
+		return ErrBlockNotFound
+	}
+	accHashes = append(accHashes, parentBlock.AccHash)
+	hashes = append(hashes, parentBlock.FullHash())
+	accHashes = append(accHashes, currentBlock.FullHash())
+	hashes = append(hashes, currentBlock.FullHash())
+
+	currentBlock.AccHash = common.RlpHash(accHashes)
+	bc.logger.Info("calculate acc hash", "accHash", currentBlock.AccHash, "blockHash", currentBlock.FullHash(), "accHashes", accHashes, "hashes", hashes)
+	return nil
 }
 
 func (bc *BlockChain) GetBlockChilds(hash common.Hash) []common.Hash {
@@ -473,6 +533,14 @@ func (bc *BlockChain) SubscribeBlockExecutedEvent(ch chan<- types.BlockExecutedE
 	return bc.blockExecutedFeed.Subscribe(ch)
 }
 
+func (bc *BlockChain) SubscribeFutureBlockEvent(ch chan<- types.FutureBlockEvent) event.Subscription {
+	return bc.futureBlockFeed.Subscribe(ch)
+}
+
+func (bc *BlockChain) SubscribeFutureTxPackageEvent(ch chan<- types.FutureTxPackageEvent) event.Subscription {
+	return bc.futureTxPackageFeed.Subscribe(ch)
+}
+
 // TrieNode retrieves a blob of data associated with a trie node (or code hash)
 // either from ephemeral in-memory cache, or from persistent storage.
 func (bc *BlockChain) TrieNode(hash common.Hash) ([]byte, error) {
@@ -483,19 +551,18 @@ func (bc *BlockChain) Database() dbwrapper.Database        { return bc.db }
 func (bc *BlockChain) GetChainID() uint64                  { return bc.chainConfig.ChainID }
 func (bc *BlockChain) GetGreedy() uint8                    { return bc.chainConfig.Greedy }
 func (bc *BlockChain) GetChainConfig() *config.ChainConfig { return bc.chainConfig }
-func (bc *BlockChain) GetCheckPoints() *config.CheckPoints { return bc.checkPoints }
 
-func (bc *BlockChain) SetMainBranchRecordBackend(m *MainBranchRecord)               { bc.mainBranchRecord = m }
-func (bc *BlockChain) GetMainBranchBlock(height uint64) (*types.BlockHeader, error) { return bc.mainBranchRecord.GetMainBranchBlock(height) }
+func (bc *BlockChain) SetMainBranchRecordBackend(m *MainBranchRecord)         { bc.mainBranchRecord = m }
+func (bc *BlockChain) GetMainBranchBlock(height uint64) (*types.Block, error) { return bc.mainBranchRecord.GetMainBranchBlock(height) }
 func (bc *BlockChain) IsInMainBranch(block *types.Block) bool {
 	if block == nil {
 		return false
 	}
-	header, err := bc.GetMainBranchBlock(block.Header.Height)
+	mainBlock, err := bc.GetMainBranchBlock(block.Header.Height)
 	if err != nil {
 		return false
 	}
-	if header.FullHash() == block.FullHash() {
+	if mainBlock.FullHash() == block.FullHash() {
 		return true
 	}
 	return false

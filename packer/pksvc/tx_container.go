@@ -6,16 +6,16 @@ import (
 	"sync"
 
 	"github.com/fractal-platform/fractal/common"
+	"github.com/fractal-platform/fractal/core/pool"
 	"github.com/fractal-platform/fractal/core/state"
 	"github.com/fractal-platform/fractal/core/types"
-	"github.com/fractal-platform/fractal/transaction"
 	"github.com/fractal-platform/fractal/transaction/txexec"
 	"github.com/fractal-platform/fractal/utils/log"
 )
 
 var (
-	ErrTxAlreadyExist            = errors.New("the tx already exists in the pool of packer")
-	ErrPoolNotBigEnough          = errors.New("the tx pool doesn't have enough tx")
+	ErrTxAlreadyExist            = errors.New("the tx already exists in the tx container of packer")
+	ErrContainerNotBigEnough     = errors.New("the tx container doesn't have enough tx")
 	ErrTransactionNotMatchPacker = errors.New("the transaction and the packer don't match")
 	ErrIsBroadcastTx             = errors.New("the transaction should be broadcast")
 )
@@ -47,7 +47,7 @@ func (q *indexQueue) push(tx *types.Transaction) error {
 func (q *indexQueue) pushUnsafe(tx *types.Transaction) error {
 	if old, ok := q.index[tx.PackingHash(q.txSigner)]; ok {
 		if old.GasPrice().Cmp(tx.GasPrice()) < 0 {
-			log.Info("pksvc tx pool: replace a tx", "old price", old.GasPrice().Uint64(), "new price", tx.GasPrice().Uint64())
+			log.Info("pksvc tx container: replace a tx", "old price", old.GasPrice().Uint64(), "new price", tx.GasPrice().Uint64())
 			*old = *tx
 			return nil
 		}
@@ -58,20 +58,13 @@ func (q *indexQueue) pushUnsafe(tx *types.Transaction) error {
 	q.index[tx.PackingHash(q.txSigner)] = tx
 	return nil
 }
-//
-//func (q *indexQueue) pop() *types.Transaction {
-//	q.mu.Lock()
-//	defer q.mu.Unlock()
-//
-//	return q.popUnsafe()
-//}
 
 func (q *indexQueue) popN(n int) ([]*types.Transaction, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	if q.queue.Len() < n {
-		return nil, ErrPoolNotBigEnough
+		return nil, ErrContainerNotBigEnough
 	}
 	txs := make([]*types.Transaction, n)
 	for i := 0; i < n; i++ {
@@ -91,10 +84,13 @@ func (q *indexQueue) popUnsafe() *types.Transaction {
 }
 
 func (q *indexQueue) len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	return q.queue.Len()
 }
 
-type txPool struct {
+type txContainer struct {
 	packerIndex     *uint32
 	queue           indexQueue
 	fakeMode        bool
@@ -106,8 +102,8 @@ type txPool struct {
 	mu      sync.RWMutex
 }
 
-func newTxPool(fakeMode bool, newTxCh chan *types.Transaction, signer types.Signer, chain blockChain, packerGroupSize uint64) *txPool {
-	return &txPool{
+func newTxContainer(fakeMode bool, newTxCh chan *types.Transaction, signer types.Signer, chain blockChain, packerGroupSize uint64) *txContainer {
+	return &txContainer{
 		queue:           newIndexQueue(signer),
 		fakeMode:        fakeMode,
 		signer:          signer,
@@ -117,43 +113,43 @@ func newTxPool(fakeMode bool, newTxCh chan *types.Transaction, signer types.Sign
 	}
 }
 
-func (pool *txPool) SetPackerIndex(index uint32) {
-	pool.packerIndex = &index
+func (t *txContainer) SetPackerIndex(index uint32) {
+	t.packerIndex = &index
 }
 
-func (pool *txPool) Add(tx *types.Transaction) error {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-	return pool.add(tx)
+func (t *txContainer) Add(tx *types.Transaction) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.add(tx)
 }
 
-func (pool *txPool) AddAll(txs types.Transactions) []error {
+func (t *txContainer) AddAll(txs types.Transactions) []error {
 	errs := make([]error, len(txs))
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	for i, tx := range txs {
-		errs[i] = pool.add(tx)
+		errs[i] = t.add(tx)
 	}
 	return errs
 }
 
-func (pool *txPool) Count() int {
-	return pool.queue.len()
+func (t *txContainer) Count() int {
+	return t.queue.len()
 }
 
-func (pool *txPool) Pop(n int) ([]*types.Transaction, error) {
-	return pool.queue.popN(n)
+func (t *txContainer) Pop(n int) ([]*types.Transaction, error) {
+	return t.queue.popN(n)
 }
 
-func (pool *txPool) validate(tx *types.Transaction) error {
+func (t *txContainer) validate(tx *types.Transaction) error {
 	// ignore transaction validate in fake mode
-	if pool.fakeMode {
+	if t.fakeMode {
 		return nil
 	}
 
 	// Heuristic limit, reject transactions over 32KB to prevent DOS attacks
 	if tx.Size() > 32*1024 {
-		return transaction.ErrOversizedData
+		return pool.ErrOversizedData
 	}
 
 	if tx.Broadcast() {
@@ -161,29 +157,29 @@ func (pool *txPool) validate(tx *types.Transaction) error {
 	}
 
 	// Whether the transaction and the packer match
-	if !tx.MatchPacker(pool.packerGroupSize, *pool.packerIndex, pool.signer) {
+	if !tx.MatchPacker(t.packerGroupSize, *t.packerIndex, t.signer) {
 		return ErrTransactionNotMatchPacker
 	}
 
 	// Transactions can't be negative.
 	if tx.Value().Sign() < 0 {
-		return transaction.ErrNegativeValue
+		return pool.ErrNegativeValue
 	}
 
 	// Make sure the transaction is signed properly
-	from, err := types.Sender(pool.signer, tx)
+	from, err := types.Sender(t.signer, tx)
 	if err != nil {
-		return transaction.ErrInvalidSender
+		return pool.ErrInvalidSender
 	}
 
 	// Transactor should have enough funds to cover the costs
-	// cost == V + GP * GL
-	currentState, err := pool.currentStateDb()
+	// cost == V + GP * GL / 10
+	currentState, err := t.currentStateDb()
 	if err != nil {
 		return err
 	}
 	if currentState.GetBalance(from).Cmp(tx.Cost()) < 0 {
-		return transaction.ErrInsufficientFunds
+		return pool.ErrInsufficientFunds
 	}
 
 	intrGas, err := txexec.IntrinsicGas(tx.Data(), tx.To() == nil)
@@ -191,39 +187,39 @@ func (pool *txPool) validate(tx *types.Transaction) error {
 		return err
 	}
 	if tx.Gas() < intrGas {
-		return transaction.ErrIntrinsicGas
+		return pool.ErrIntrinsicGas
 	}
 
-	if pool.chain.CurrentBlock().Header.GasLimit < tx.Gas() {
-		return transaction.ErrGasLimit
+	if t.chain.CurrentBlock().Header.GasLimit < tx.Gas() {
+		return pool.ErrGasLimit
 	}
 
-	log.Debug("Validate Tx Ok (when add to tx pool of packer)")
+	log.Debug("Validate Tx Ok (when add to tx container of packer)")
 
 	return nil
 }
 
-func (pool *txPool) add(tx *types.Transaction) error {
-	if err := pool.validate(tx); err != nil {
+func (t *txContainer) add(tx *types.Transaction) error {
+	if err := t.validate(tx); err != nil {
 		log.Error("validate transaction failed", "err", err)
 		return err
 	}
-	if err := pool.queue.push(tx); err != nil {
+	if err := t.queue.push(tx); err != nil {
 		return err
 	}
-	if pool.newTxCh != nil {
-		go func() { pool.newTxCh <- tx }()
+	if t.newTxCh != nil {
+		go func() { t.newTxCh <- tx }()
 	}
 	return nil
 }
 
-func (pool *txPool) currentStateDb() (*state.StateDB, error) {
-	block := pool.chain.CurrentBlock()
+func (t *txContainer) currentStateDb() (*state.StateDB, error) {
+	block := t.chain.CurrentBlock()
 	if block == nil {
 		return nil, errors.New("block not found")
 	}
 
-	stateDb, err := pool.chain.StateAt(block.Header.StateHash)
+	stateDb, err := t.chain.StateAt(block.Header.StateHash)
 	if err != nil {
 		return nil, err
 	}

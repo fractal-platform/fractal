@@ -7,15 +7,16 @@ package config
 import (
 	"crypto/ecdsa"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/crypto"
 	"github.com/fractal-platform/fractal/p2p"
 	"github.com/fractal-platform/fractal/p2p/discover"
 	"github.com/fractal-platform/fractal/utils/log"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 )
 
 const (

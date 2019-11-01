@@ -21,6 +21,11 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"net"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/mclock"
 	"github.com/fractal-platform/fractal/event"
@@ -29,10 +34,6 @@ import (
 	"github.com/fractal-platform/fractal/p2p/netutil"
 	"github.com/fractal-platform/fractal/utils/log"
 	"github.com/xtaci/kcp-go"
-	"net"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 const (

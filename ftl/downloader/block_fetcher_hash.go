@@ -3,36 +3,36 @@ package downloader
 import (
 	"errors"
 	"fmt"
+	"math"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/deckarep/golang-set"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/ftl/protocol"
 	"github.com/fractal-platform/fractal/rlp"
 	"github.com/fractal-platform/fractal/utils/log"
-	"github.com/deckarep/golang-set"
-	"math"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
-// blockReq represents a range rounds of blocks grouped together or a certain block
+// blockReqByHash represents a range rounds of blocks grouped together or a certain block
 // into a single data retrieval network packet.
-type blockReq struct {
+type blockReqByHash struct {
 	fetcherReq
-	roundFrom uint64
-	roundTo   uint64
+	items     []common.Hash
 	response  []*types.Block
 	index     int64
 	isTimeout bool
 }
 
 // emptyResponse return true,when the response of the req is empty.
-func (req *blockReq) emptyResponse() bool {
+func (req *blockReqByHash) emptyResponse() bool {
 	return len(req.response) == 0
 }
 
-// BlockFetcher schedules requests for fetching blocks according a given rounds range.
-type BlockFetcher struct {
+// BlockFetcherByRound schedules requests for fetching blocks according a given rounds range.
+type BlockFetcherByHash struct {
 	pm     *peersManager
 	chain  blockchain
 	logger log.Logger
@@ -42,14 +42,13 @@ type BlockFetcher struct {
 
 	// for response receive
 	repCh   chan dataPack
-	deliver chan *blockReq // Delivery channel multiplexing peer responses
+	deliver chan *blockReqByHash // Delivery channel multiplexing peer responses
 
 	// for block fetch
-	roundStart   uint64 // the Round that has not been assigned
-	roundEnd     uint64 // the Round requested to
-	trackReq     chan *blockReq
+	reqs         []common.Hash
+	trackReq     chan *blockReqByHash
 	newReq       chan bool
-	prioReqs     map[uint64]*blockReq
+	prioReqs     []common.Hash
 	assignTaskCh chan struct{}
 	reqIndex     int64
 
@@ -69,11 +68,11 @@ type BlockFetcher struct {
 	finishCh   chan struct{}
 }
 
-// newBlocksFetcher creates a new blocks scheduler. This method does not
+// newBlocksFetcherByHash creates a new blocks scheduler. This method does not
 // yet start the sync. The user needs to call run to initiate.
-func newBlocksFetcher(roundFrom, roundTo uint64, chain blockchain, manager *peersManager, autoStop bool, stage protocol.SyncStage, blockCh chan *types.Block, logger log.Logger) *BlockFetcher {
+func newBlocksFetcherByHash(reqs []common.Hash, chain blockchain, manager *peersManager, autoStop bool, stage protocol.SyncStage, blockCh chan *types.Block, logger log.Logger) *BlockFetcherByHash {
 	pkgsFetcher := newPkgsFetcher(manager, autoStop, stage, logger)
-	blockFetcher := &BlockFetcher{
+	blockFetcher := &BlockFetcherByHash{
 		chain:  chain,
 		pm:     manager,
 		logger: logger,
@@ -82,13 +81,11 @@ func newBlocksFetcher(roundFrom, roundTo uint64, chain blockchain, manager *peer
 		autoStop: autoStop,
 
 		repCh:   make(chan dataPack),
-		deliver: make(chan *blockReq),
+		deliver: make(chan *blockReqByHash),
 
-		roundStart:   roundFrom,
-		roundEnd:     roundTo,
-		trackReq:     make(chan *blockReq),
+		reqs:         reqs,
+		trackReq:     make(chan *blockReqByHash),
 		newReq:       make(chan bool),
-		prioReqs:     make(map[uint64]*blockReq),
 		assignTaskCh: make(chan struct{}),
 		reqIndex:     0,
 
@@ -105,7 +102,7 @@ func newBlocksFetcher(roundFrom, roundTo uint64, chain blockchain, manager *peer
 	return blockFetcher
 }
 
-func (bf *BlockFetcher) DeliverData(id string, data interface{}, kind int) error {
+func (bf *BlockFetcherByHash) DeliverData(id string, data interface{}, kind int) error {
 	switch kind {
 	case Blocks:
 		bf.deliverData(id, data.(types.Blocks))
@@ -119,7 +116,7 @@ func (bf *BlockFetcher) DeliverData(id string, data interface{}, kind int) error
 }
 
 // deliverData injects a new batch of blocks data received from a remote node.
-func (bf *BlockFetcher) deliverData(id string, data []*types.Block) {
+func (bf *BlockFetcherByHash) deliverData(id string, data []*types.Block) {
 	select {
 	case bf.repCh <- &blockPack{id, data}:
 		return
@@ -128,7 +125,7 @@ func (bf *BlockFetcher) deliverData(id string, data []*types.Block) {
 	}
 }
 
-func (bf *BlockFetcher) Register(peer FetcherPeer) error {
+func (bf *BlockFetcherByHash) Register(peer FetcherPeer) error {
 	err := bf.pm.RegisterPeer(peer)
 	if err != nil {
 		return err
@@ -136,19 +133,19 @@ func (bf *BlockFetcher) Register(peer FetcherPeer) error {
 	return nil
 }
 
-func (bf *BlockFetcher) Finish() {
+func (bf *BlockFetcherByHash) Finish() {
 	bf.pkgsFetcher.finish()
 	bf.finishOnce.Do(func() { close(bf.finishCh) })
 }
 
 // Wait blocks until the fetcher is done or canceled.
-func (bf *BlockFetcher) Wait() error {
+func (bf *BlockFetcherByHash) Wait() error {
 	<-bf.done
 	bf.logger.Info("block fetcher wait returns", "err", bf.err)
 	return bf.err
 }
 
-func (bf *BlockFetcher) start() {
+func (bf *BlockFetcherByHash) start() {
 	// for communication with pkg fetcher
 	go bf.deliverPkgReqs()
 	go bf.pkgReqFinished()
@@ -163,18 +160,18 @@ func (bf *BlockFetcher) start() {
 }
 
 // loop for request handle
-func (bf *BlockFetcher) runReqHandleLoop() {
+func (bf *BlockFetcherByHash) runReqHandleLoop() {
 	var (
-		active   = make(map[string]*blockReq) // Currently in-flight requests
-		finished []*blockReq                  // Completed or failed requests
-		timeout  = make(chan *blockReq)       // Timed out active requests
+		active   = make(map[string]*blockReqByHash) // Currently in-flight requests
+		finished []*blockReqByHash                  // Completed or failed requests
+		timeout  = make(chan *blockReqByHash)       // Timed out active requests
 	)
 	defer func() {
 		// Cancel active request timers on exit. Also set peers to idle so they're
 		// available for the next sync.
 		for _, req := range active {
 			req.timer.Stop()
-			req.peer.SetIdle(int(req.roundFrom - req.roundTo))
+			req.peer.SetIdle(len(req.items))
 		}
 	}()
 
@@ -182,8 +179,8 @@ func (bf *BlockFetcher) runReqHandleLoop() {
 	for {
 		// Enable sending of the first buffered element if there is one.
 		var (
-			deliverReq   *blockReq
-			deliverReqCh chan *blockReq
+			deliverReq   *blockReqByHash
+			deliverReqCh chan *blockReqByHash
 		)
 		if len(finished) > 0 {
 			deliverReq = finished[0]
@@ -225,7 +222,7 @@ func (bf *BlockFetcher) runReqHandleLoop() {
 			if active[req.peer.FP.GetID()] != req {
 				continue
 			}
-			bf.logger.Info("Fetch block timeout", "peer", req.peer.FP.GetID(), "roundFrom", req.roundFrom, "roundTo", req.roundTo, "index", req.index)
+			bf.logger.Info("Fetch block timeout", "peer", req.peer.FP.GetID(), "item", len(req.items), "index", req.index)
 
 			// Move the timed out data back into the download queue
 			req.isTimeout = true
@@ -265,15 +262,15 @@ func (bf *BlockFetcher) runReqHandleLoop() {
 }
 
 // loop for request assign
-func (bf *BlockFetcher) runReqAssignLoop() {
+func (bf *BlockFetcherByHash) runReqAssignLoop() {
 	//
 	defer close(bf.done)
 
 	for {
-		bf.logger.Info("Sync block loop is still running", "start", bf.roundStart, "end", bf.roundEnd, "prioReq", len(bf.prioReqs), "peers", bf.pm.len())
+		bf.logger.Info("Sync block loop is still running", "remain", len(bf.reqs), "prioReq", len(bf.prioReqs), "peers", bf.pm.len())
 
 		if bf.pm.len() == 0 && bf.autoStop {
-			bf.logger.Info("BlockFetcher No have available peer.")
+			bf.logger.Info("BlockFetcherByRound No have available peer.")
 			bf.err = errNoAvailPeer
 			return
 		}
@@ -297,7 +294,7 @@ func (bf *BlockFetcher) runReqAssignLoop() {
 			return
 
 		case req := <-bf.deliver:
-			bf.logger.Info("Received blocks response", "peer", req.peer.FP.GetID(), "count", len(req.response), "dropped", req.dropped, "emptyResponse", req.emptyResponse(), "timeout", req.isTimeout, "roundFrom", req.roundFrom, "roundTo", req.roundTo, "index", req.index)
+			bf.logger.Info("Received blocks response", "peer", req.peer.FP.GetID(), "count", len(req.response), "dropped", req.dropped, "emptyResponse", req.emptyResponse(), "timeout", req.isTimeout, "reqs", len(req.items), "index", req.index)
 
 			// If the req is dropped, injects it into hash requests set.
 			if req.dropped {
@@ -321,9 +318,9 @@ func (bf *BlockFetcher) runReqAssignLoop() {
 
 //assignTasks finds the peers which are idle and assign task according to their cap
 //which cap was calculated by their performance(ttl and throughput) in last request.
-func (bf *BlockFetcher) assignTasks() {
+func (bf *BlockFetcherByHash) assignTasks() {
 	//if all request has been assigned return
-	if len(bf.prioReqs) == 0 && bf.roundStart >= bf.roundEnd {
+	if len(bf.prioReqs) == 0 && len(bf.reqs) == 0 {
 		return
 	}
 
@@ -334,7 +331,7 @@ func (bf *BlockFetcher) assignTasks() {
 	for i, p := range peers {
 		// Assign a batch of fetches proportional to the estimated latency/bandwidth
 		cap := bf.blocksCapacity(p)
-		req := &blockReq{fetcherReq: fetcherReq{
+		req := &blockReqByHash{fetcherReq: fetcherReq{
 			peer:    p,
 			timeout: bf.pm.requestTTL(),
 			dropped: false,
@@ -349,10 +346,10 @@ func (bf *BlockFetcher) assignTasks() {
 		}
 
 		// If the peer was assigned tasks to fetch, send the network request
-		if req.roundFrom < bf.roundEnd {
+		if len(req.items) > 0 {
 			select {
 			case bf.trackReq <- req:
-				err := req.peer.FetchBlocks(bf.stage, req.roundFrom, req.roundTo)
+				err := req.peer.FetchBlocks(bf.stage, req.items, 0, 0)
 				if err != nil {
 					bf.logger.Error("Failed fetch block", "error", err)
 				}
@@ -364,9 +361,10 @@ func (bf *BlockFetcher) assignTasks() {
 
 //fillTask assign task into req.When array request is not empty,fillTask assign
 // tasks in request array.Otherwise assign tasks which are not assigned according the cap of peers.
-func (bf *BlockFetcher) fillTasks(n int, req *blockReq) bool {
+func (bf *BlockFetcherByHash) fillTasks(n int, req *blockReqByHash) bool {
 	// If the all reqs have been distributed, return true.
-	if len(bf.prioReqs) == 0 && bf.roundStart >= bf.roundEnd {
+	if len(bf.prioReqs) == 0 && len(bf.reqs) == 0 {
+		bf.logger.Info("All blocks have been requested!")
 		return true
 	}
 
@@ -374,43 +372,48 @@ func (bf *BlockFetcher) fillTasks(n int, req *blockReq) bool {
 	// cap of peer.
 	if len(bf.prioReqs) != 0 {
 		bf.logger.Debug("Now the length of prioReq is:", "len", len(bf.prioReqs))
-		nfrom := bf.getOldestRoundReq()
-		req.roundFrom = bf.prioReqs[nfrom].roundFrom
+		if len(bf.prioReqs) > n {
+			req.items = append(req.items, bf.prioReqs[:n]...)
+			bf.prioReqs = bf.prioReqs[n:]
+		} else if len(bf.prioReqs) == n {
+			req.items = append(req.items, bf.prioReqs[:n]...)
+			bf.prioReqs = []common.Hash{}
+		} else {
+			req.items = append(req.items, bf.prioReqs...)
+			bf.prioReqs = []common.Hash{}
 
-		if req.roundFrom+uint64(n) >= bf.prioReqs[nfrom].roundTo {
-			req.roundTo = bf.prioReqs[nfrom].roundTo
-			delete(bf.prioReqs, nfrom)
-		} else {
-			req.roundTo = req.roundFrom + uint64(n)
-			bf.prioReqs[req.roundTo] = &blockReq{roundFrom: req.roundTo, roundTo: bf.prioReqs[nfrom].roundTo, index: atomic.AddInt64(&bf.reqIndex, 1)}
-			delete(bf.prioReqs, nfrom)
-		}
-	} else if bf.roundStart < bf.roundEnd {
-		bf.logger.Debug("Now assignment", "start", bf.roundStart, "end", bf.roundEnd)
-		req.roundFrom = bf.roundStart
-		if bf.roundStart+uint64(n) > bf.roundEnd {
-			req.roundTo = bf.roundEnd
-			bf.roundStart = bf.roundEnd
-		} else {
-			req.roundTo = bf.roundStart + uint64(n)
-			bf.roundStart = req.roundTo
+			if len(bf.reqs) > n-len(bf.prioReqs) {
+				req.items = append(req.items, bf.reqs[:n-len(bf.prioReqs)]...)
+				bf.reqs = bf.reqs[n-len(bf.prioReqs):]
+			} else {
+				req.items = append(req.items, bf.reqs...)
+				bf.reqs = []common.Hash{}
+			}
+
 		}
 	} else {
-		bf.logger.Info("All blocks have been requested!")
+		if len(bf.reqs) > n {
+			req.items = append(req.items, bf.reqs[:n]...)
+			bf.reqs = bf.reqs[n:]
+		} else {
+			req.items = append(req.items, bf.reqs...)
+			bf.reqs = []common.Hash{}
+		}
 	}
-	bf.logger.Info("Assign a new blocks Req", "from", req.roundFrom, "to", req.roundTo, "index", req.index, "peer", req.peer.FP.GetID())
+
+	bf.logger.Info("Assign a new blocks Req", "items", len(req.items), "index", req.index, "peer", req.peer.FP.GetID())
 	return false
 }
 
 //process checkout whether the req was timeout.If the req was timeout or dropped, if so
 //push then into request array.Then for each response in req,process it and calculate the size of successful data.If received
 //a block which is not in right Round range.Push the req into array of request and return.
-func (bf *BlockFetcher) process(req *blockReq) (int, error) {
+func (bf *BlockFetcherByHash) process(req *blockReqByHash) (int, error) {
 	successful := 0
 
 	// If the req is timeout, injects it into priority requests set.
 	if req.emptyResponse() {
-		bf.logger.Info("This req is timeout or response is empty", "timeout", req.isTimeout, "peer", req.peer.FP.GetID(), "from", req.roundFrom, "to", req.roundTo, "index", req.index)
+		bf.logger.Info("This req is timeout or response is empty", "timeout", req.isTimeout, "peer", req.peer.FP.GetID(), "items", len(req.items), "index", req.index)
 
 		bf.insertRequest(req)
 		//If the req is timeout and the req is not dropped, drop and unregister the peer of the req.
@@ -419,7 +422,6 @@ func (bf *BlockFetcher) process(req *blockReq) (int, error) {
 		} else {
 			bf.logger.Info("peersManager drop peer", "peer", req.peer.FP.GetID())
 			bf.pm.UnregisterPeer(req.peer.FP.GetID())
-
 			//if two cursors are running, the first cursor connection failed, the second no need to drop the peer
 			bf.pm.dropPeer(req.peer.FP.GetID(), false)
 		}
@@ -431,43 +433,58 @@ func (bf *BlockFetcher) process(req *blockReq) (int, error) {
 
 	var pkgHashSet = mapset.NewSet()
 	var pkgHashSlice []common.Hash
-	for _, blob := range req.response {
-		// ProcessBlock and return the size and the packages' hashes of block.
-		hashes, err, blockSize := bf.processBlock(blob, req)
 
-		switch err {
-		case nil:
-			successful += blockSize
-			for _, hash := range hashes {
-				if !pkgHashSet.Contains(hash) {
-					pkgHashSlice = append(pkgHashSlice, hash)
+	for _, blob := range req.response {
+	ForAgain:
+		for i, blockHash := range req.items {
+			///If the response in your reqs, process it.
+			if blockHash == blob.FullHash() {
+				if len(req.items) > 1 {
+					req.items = append(req.items[:i], req.items[i+1:]...)
+				} else {
+					req.items = nil
 				}
-				pkgHashSet.Add(hash)
+				hashes, err, blockSize := bf.processBlock(blob, req)
+				switch err {
+				case nil:
+					successful += blockSize
+					for _, hash := range hashes {
+						if !pkgHashSet.Contains(hash) {
+							pkgHashSlice = append(pkgHashSlice, hash)
+						}
+						pkgHashSet.Add(hash)
+					}
+					break ForAgain
+				case errBlockWithWrongRound:
+					bf.logger.Error("Received block not in appropriate Round range", "peer", req.peer.FP.GetID(), "Hash", blob.FullHash(), "Round", blob.Header.Round, "roundFrom", "items", len(req.items), "Height", blob.Header.Height)
+					bf.insertRequest(req)
+					bf.pm.UnregisterPeer(req.peer.FP.GetID())
+					if bf.pm.dropPeer != nil {
+						bf.pm.UnregisterPeer(req.peer.FP.GetID())
+						bf.pm.dropPeer(req.peer.FP.GetID(), false)
+					} else {
+						bf.logger.Warn("unregistered a fail peer but not drop it", "peer", req.peer.FP.GetID())
+					}
+					return 0, nil
+				default:
+					bf.insertRequest(req)
+					bf.pm.UnregisterPeer(req.peer.FP.GetID())
+					if bf.pm.dropPeer != nil {
+						bf.pm.UnregisterPeer(req.peer.FP.GetID())
+						bf.pm.dropPeer(req.peer.FP.GetID(), false)
+					} else {
+						bf.logger.Warn("unregisted a fail peer but not drop it", "peer", req.peer.FP.GetID())
+					}
+					return 0, fmt.Errorf("invalid block %s: %v", blob.FullHash().TerminalString(), err)
+				}
 			}
-		case errBlockWithWrongRound:
-			bf.logger.Error("Received block not in appropriate Round range", "peer", req.peer.FP.GetID(), "Hash", blob.FullHash(), "Round", blob.Header.Round, "roundFrom", req.roundFrom, "roundTo", req.roundTo, "Height", blob.Header.Height)
-			bf.insertRequest(req)
-			bf.pm.UnregisterPeer(req.peer.FP.GetID())
-			if bf.pm.dropPeer != nil {
-				bf.pm.UnregisterPeer(req.peer.FP.GetID())
-				bf.pm.dropPeer(req.peer.FP.GetID(), false)
-			} else {
-				bf.logger.Warn("unregistered a fail peer but not drop it", "peer", req.peer.FP.GetID())
-			}
-			return 0, nil
-		default:
-			bf.insertRequest(req)
-			bf.pm.UnregisterPeer(req.peer.FP.GetID())
-			if bf.pm.dropPeer != nil {
-				bf.pm.UnregisterPeer(req.peer.FP.GetID())
-				bf.pm.dropPeer(req.peer.FP.GetID(), false)
-			} else {
-				bf.logger.Warn("unregisted a fail peer but not drop it", "peer", req.peer.FP.GetID())
-			}
-			return 0, fmt.Errorf("invalid block %s: %v", blob.FullHash().TerminalString(), err)
 		}
 	}
-	bf.logger.Debug("BlockFetcher: add request to pkgsfetcher", "length", len(pkgHashSlice))
+
+	if len(req.items) > 0 {
+		bf.insertRequest(req)
+	}
+	bf.logger.Debug("BlockFetcherByRound: add request to pkgsfetcher", "length", len(pkgHashSlice))
 	// Send the packages hashes in this reqs to pkgFetcher.
 	bf.pkgReqsCh <- pkgHashSlice
 
@@ -476,12 +493,9 @@ func (bf *BlockFetcher) process(req *blockReq) (int, error) {
 
 // processBlock checkout if the block in the appropriate Round range,return the packages hashes in blocks
 // and add the block into pending set.
-func (bf *BlockFetcher) processBlock(b *types.Block, req *blockReq) ([]common.Hash, error, int) {
+func (bf *BlockFetcherByHash) processBlock(b *types.Block, req *blockReqByHash) ([]common.Hash, error, int) {
 	bf.logger.Debug("block sync process block", "hash", b.FullHash(), "round", b.Header.Round, "height", b.Header.Height, "pkgsSize", len(b.Body.TxPackageHashes))
-	if (b.Header.Round > req.roundTo || b.Header.Round < req.roundFrom) {
-		bf.logger.Error("block sync process block failed", "err", "round out of range")
-		return nil, errBlockWithWrongRound, 0
-	}
+
 	bf.pendingLock.Lock()
 	bf.pending[b.FullHash()] = b
 	bf.pendingLock.Unlock()
@@ -496,39 +510,23 @@ func (bf *BlockFetcher) processBlock(b *types.Block, req *blockReq) ([]common.Ha
 }
 
 // insertRequest injects a req into priority request set.
-func (bf *BlockFetcher) insertRequest(req *blockReq) {
-	bf.prioReqs[req.roundFrom] = &blockReq{
-		roundFrom: req.roundFrom,
-		roundTo:   req.roundTo,
-		index:     atomic.AddInt64(&bf.reqIndex, 1),
-	}
+func (bf *BlockFetcherByHash) insertRequest(req *blockReqByHash) {
+	bf.prioReqs = append(bf.prioReqs, req.items...)
 }
 
 // blocksCapacity return the predicted amount of blocks the peer should fetcher next time.
-func (bf *BlockFetcher) blocksCapacity(peer *Peer) int {
+func (bf *BlockFetcherByHash) blocksCapacity(peer *Peer) int {
 	peer.lock.RLock()
 	defer peer.lock.RUnlock()
 
-	return int(math.Min(math.Max(float64(MinBlockRoundFetch), (peer.GetThroughput()/float64(BytesPerRound))*float64(bf.pm.requestRTT())/float64(time.Second)), float64(MaxBlockRoundFetch)))
-}
-
-// getOldestOldestRoundReq return the oldest request in priority request set.
-func (bf *BlockFetcher) getOldestRoundReq() uint64 {
-	var nfrom uint64 = math.MaxUint64
-	for k, v := range bf.prioReqs {
-		bf.logger.Debug("Now the prioReq is ", "key", k, "from", v.roundFrom, "to", v.roundTo)
-		if k < nfrom {
-			nfrom = k
-		}
-	}
-	return nfrom
+	return int(math.Min(math.Max(float64(MinBlockFetch), (peer.GetThroughput()/float64(BytesPerBlock))*float64(bf.pm.requestRTT())/float64(time.Second)), float64(MaxBlockFetch)))
 }
 
 //TODO:pending blocks time out! If malicious player send err-blocks ?
 
 // checkFinishBlocks checkout if the blocks in pending set have received all the packages they have, and send the finished
 // block to synchroniser.
-func (bf *BlockFetcher) checkFinishBlocks() {
+func (bf *BlockFetcherByHash) checkFinishBlocks() {
 	for {
 		select {
 		case <-bf.checkBlocks:
@@ -556,7 +554,7 @@ func (bf *BlockFetcher) checkFinishBlocks() {
 
 // checkFinishBlock checkout if the packages blong to a block have been insert into
 // local database.
-func (bf *BlockFetcher) checkFinishBlock(block *types.Block) bool {
+func (bf *BlockFetcherByHash) checkFinishBlock(block *types.Block) bool {
 	for _, hash := range block.Body.TxPackageHashes {
 		has := bf.chain.HasTxPackage(hash) || bf.chain.IsTxPackageInFuture(hash)
 		if !has {
@@ -566,7 +564,7 @@ func (bf *BlockFetcher) checkFinishBlock(block *types.Block) bool {
 	return true
 }
 
-func (bf *BlockFetcher) deliverPkgReqs() {
+func (bf *BlockFetcherByHash) deliverPkgReqs() {
 	for {
 		select {
 		case pkgsReq := <-bf.pkgReqsCh:
@@ -578,7 +576,7 @@ func (bf *BlockFetcher) deliverPkgReqs() {
 	}
 }
 
-func (bf *BlockFetcher) pkgReqFinished() {
+func (bf *BlockFetcherByHash) pkgReqFinished() {
 	for {
 		select {
 		case <-bf.pkgsFetcher.finishReqs:

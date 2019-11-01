@@ -8,8 +8,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"golang.org/x/net/websocket"
 	"net/http"
+
+	"golang.org/x/net/websocket"
 )
 
 // wsHandler handles the subscription request

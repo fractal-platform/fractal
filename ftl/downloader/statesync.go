@@ -2,16 +2,17 @@ package downloader
 
 import (
 	"fmt"
+	"hash"
+	"math"
+	"sync"
+	"time"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/state"
 	"github.com/fractal-platform/fractal/crypto/sha3"
 	"github.com/fractal-platform/fractal/dbwrapper"
 	"github.com/fractal-platform/fractal/trie"
 	"github.com/fractal-platform/fractal/utils/log"
-	"hash"
-	"math"
-	"sync"
-	"time"
 )
 
 // StateSync schedules requests for downloading a particular state trie defined

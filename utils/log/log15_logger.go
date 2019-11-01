@@ -5,10 +5,11 @@
 package log
 
 import (
-	"github.com/inconshreveable/log15"
-	"github.com/mattn/go-isatty"
 	"io"
 	"os"
+
+	"github.com/inconshreveable/log15"
+	"github.com/mattn/go-isatty"
 )
 
 type Log15Logger struct {

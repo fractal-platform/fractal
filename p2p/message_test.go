@@ -139,6 +139,7 @@ func TestEOFSignal(t *testing.T) {
 	default:
 	}
 }
+
 //
 //func unhex(str string) []byte {
 //	r := strings.NewReplacer("\t", "", " ", "", "\n", "")

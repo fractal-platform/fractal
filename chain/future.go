@@ -7,13 +7,15 @@ package chain
 import (
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/types"
+	"github.com/fractal-platform/fractal/utils"
 	"github.com/fractal-platform/fractal/utils/log"
 )
 
 /////////////////// future block -> dependHash ///////////////////////////////////////////////////
 // add block to future block, since [block] depends on [dependHash]
-func (bc *BlockChain) addFutureBlock(dependHash common.Hash, block *types.Block) {
+func (bc *BlockChain) addFutureBlock(dependHash common.Hash, block *types.Block) int {
 	bc.futureBlocksMutex.Lock()
+
 	_, ok := bc.futureBlocks[dependHash]
 	if !ok {
 		blocks := make(types.Blocks, 0)
@@ -22,16 +24,28 @@ func (bc *BlockChain) addFutureBlock(dependHash common.Hash, block *types.Block)
 	if !bc.futureBlocks[dependHash].Has(block.FullHash()) {
 		*bc.futureBlocks[dependHash] = append(*bc.futureBlocks[dependHash], block)
 	}
+
+	// process block depend depth
+	depth1 := bc.futureBlockDependDepth[dependHash]
+	depth2 := bc.futureBlockDependDepth[block.FullHash()]
+	depth := utils.MaxOf(depth1, depth2+1)
+	bc.futureBlockDependDepth[dependHash] = depth
+
 	bc.futureBlocksMutex.Unlock()
 
-	log.Info("add future block -> block", "size", bc.futureBlocksSize(), "dependHash", dependHash, "blockHash", block.FullHash())
+	log.Info("add future block -> block", "size", bc.futureBlocksSize(), "dependHash", dependHash, "blockHash", block.FullHash(), "depth", depth)
+	return depth
 }
 
 // remove the block from map item value(type.Blocks), when the block is handled already
 func (bc *BlockChain) removeFutureBlock(hash common.Hash) {
 	bc.futureBlocksMutex.Lock()
-	for _, futureBlocks := range bc.futureBlocks {
+	for relatedHash, futureBlocks := range bc.futureBlocks {
 		futureBlocks.Remove(hash)
+		if len(*futureBlocks) <= 0 {
+			delete(bc.futureBlocks, relatedHash)
+			delete(bc.futureBlockDependDepth, relatedHash)
+		}
 	}
 	bc.futureBlocksMutex.Unlock()
 }
@@ -48,7 +62,7 @@ func (bc *BlockChain) futureBlocksSize() int {
 }
 
 // get future blocks for [relatedHash]
-func (bc *BlockChain) FutureBlocks(relatedHash common.Hash) types.Blocks {
+func (bc *BlockChain) getFutureBlocks(relatedHash common.Hash) types.Blocks {
 	bc.futureBlocksMutex.RLock()
 	defer bc.futureBlocksMutex.RUnlock()
 	if blocks, ok := bc.futureBlocks[relatedHash]; ok {
@@ -58,10 +72,11 @@ func (bc *BlockChain) FutureBlocks(relatedHash common.Hash) types.Blocks {
 }
 
 // remove future blocks for [relatedHash]
-func (bc *BlockChain) RemoveFutureBlocks(relatedHash common.Hash) {
+func (bc *BlockChain) removeFutureBlocks(relatedHash common.Hash) {
 	bc.futureBlocksMutex.Lock()
 	defer bc.futureBlocksMutex.Unlock()
 	delete(bc.futureBlocks, relatedHash)
+	delete(bc.futureBlockDependDepth, relatedHash)
 }
 
 /////////////////// future block -> pkgHash ///////////////////////////////////////////////////
@@ -102,7 +117,7 @@ func (bc *BlockChain) futureTxPackageBlocksSize() int {
 }
 
 // get future txpkg blocks for [relatedTxPackageHash]
-func (bc *BlockChain) FutureTxPackageBlocks(relatedTxPackageHash common.Hash) types.Blocks {
+func (bc *BlockChain) getFutureTxPackageBlocks(relatedTxPackageHash common.Hash) types.Blocks {
 	bc.futureTxPackageBlocksMutex.RLock()
 	defer bc.futureTxPackageBlocksMutex.RUnlock()
 	if blocks, ok := bc.futureTxPackageBlocks[relatedTxPackageHash]; ok {
@@ -112,7 +127,7 @@ func (bc *BlockChain) FutureTxPackageBlocks(relatedTxPackageHash common.Hash) ty
 }
 
 // remove future txpkg blocks for [relatedTxPackageHash]
-func (bc *BlockChain) RemoveFutureTxPackageBlocks(relatedTxPackageHash common.Hash) {
+func (bc *BlockChain) removeFutureTxPackageBlocks(relatedTxPackageHash common.Hash) {
 	bc.futureTxPackageBlocksMutex.Lock()
 	defer bc.futureTxPackageBlocksMutex.Unlock()
 	delete(bc.futureTxPackageBlocks, relatedTxPackageHash)
@@ -136,7 +151,7 @@ func (bc *BlockChain) addFutureBlockTxPackage(blockHash common.Hash, pkg *types.
 }
 
 // remove the txpkg from map item value(type.Blocks), when the txpkg is handled already
-func (bc *BlockChain) RemoveFutureBlockTxPackage(pkgHash common.Hash) {
+func (bc *BlockChain) removeFutureBlockTxPackage(pkgHash common.Hash) {
 	bc.futureBlockTxPackagesMutex.Lock()
 	for _, futureBlockTxPackages := range bc.futureBlockTxPackages {
 		futureBlockTxPackages.Remove(pkgHash)
@@ -155,7 +170,7 @@ func (bc *BlockChain) futureBlockTxPackagesSize() int {
 	return count
 }
 
-func (bc *BlockChain) FutureBlockTxPackages(blockHash common.Hash) types.TxPackages {
+func (bc *BlockChain) getFutureBlockTxPackages(blockHash common.Hash) types.TxPackages {
 	bc.futureBlockTxPackagesMutex.RLock()
 	defer bc.futureBlockTxPackagesMutex.RUnlock()
 	if txpkgs, ok := bc.futureBlockTxPackages[blockHash]; ok {

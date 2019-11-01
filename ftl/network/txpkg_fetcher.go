@@ -1,9 +1,10 @@
 package network
 
 import (
-	"github.com/fractal-platform/fractal/common"
 	"sync"
+
 	"github.com/deckarep/golang-set"
+	"github.com/fractal-platform/fractal/common"
 )
 
 type txpkgFetcher struct {

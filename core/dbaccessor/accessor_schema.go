@@ -29,6 +29,10 @@ var (
 	// genesisBlockKey stores genesis block's hash.
 	genesisBlockKey = []byte("GenesisBlock")
 
+	// checkpoint
+	lastCheckPointKey = []byte("LCP")
+	checkPointPrefix  = []byte("CP")
+
 	// Data item prefixes (use single byte to avoid mixing data types, avoid `i`, used for indexes).
 	headerPrefix          = []byte("H")  // headerPrefix + hash -> block header
 	bodyPrefix            = []byte("B")  // bodyPrefix + hash -> block body
@@ -50,6 +54,8 @@ var (
 	bloomBitsPrefix                = []byte("BB") // bloomBitsPrefix + bit (uint16 big endian) + section (uint64 big endian) -> bloom bits
 	bloomSectionSavedFlagPrefix    = []byte("BSF")
 	bloomFastSyncReachHeightPrefix = []byte("BFS")
+
+	accHashPrefix = []byte("ACC")
 
 	txLookupPrefix = []byte("l") // txLookupPrefix + hash -> transaction lookup metadata
 
@@ -145,6 +151,11 @@ func bloomFastSyncReachHeightMapKey() []byte {
 	return bloomFastSyncReachHeightPrefix
 }
 
+// accHashKey = accHashPrefix + blockFullHash
+func accHashKey(hash common.Hash) []byte {
+	return append(accHashPrefix, hash.Bytes()...)
+}
+
 func heightBlockMapKey(height uint64) []byte {
 	key := append(heightBlockMapPrefix, make([]byte, 8)...)
 	binary.BigEndian.PutUint64(key[3:], height)
@@ -167,6 +178,12 @@ func txPackageNonceKey(coinbase common.Address) []byte {
 
 func txPackageHashKey(hash common.Hash) []byte {
 	return append(txPkgHashPrefix, hash.Bytes()...)
+}
+
+func checkPointKey(index uint64) []byte {
+	key := append(checkPointPrefix, make([]byte, 8)...)
+	binary.BigEndian.PutUint64(key[2:], index)
+	return key
 }
 
 // DatabaseReader wraps the Has and Get method of a backing data store.
