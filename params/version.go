@@ -7,7 +7,7 @@ import (
 const (
 	VersionMajor = 0 // Major version component of the current release
 	VersionMinor = 2 // Minor version component of the current release
-	VersionPatch = 0 // Patch version component of the current release
+	VersionPatch = 1 // Patch version component of the current release
 )
 
 // Version holds the textual version string.

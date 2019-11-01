@@ -16,3 +16,12 @@ fi
 cd release
 tar zcvf $PKG_FILE fractal-bin
 cd ..
+
+# set version
+if [[ "$ENV_OS" == "ubuntu" ]]; then
+    sed -i "s/__VERSION__/$TRAVIS_TAG/g" install.sh
+    sed -i "s/__VERSION__/$TRAVIS_TAG/g" install_in_docker.sh
+elif [[ "$ENV_OS" == "osx" ]]; then
+    sed -i "" "s/__VERSION__/$TRAVIS_TAG/g" install.sh
+    sed -i "" "s/__VERSION__/$TRAVIS_TAG/g" install_in_docker.sh
+fi
