@@ -114,6 +114,14 @@ func NewStateTransition(prevStateDb *state.StateDB, statedb *state.StateDB, msg 
 	}
 }
 
+// to returns the recipient of the message.
+func (st *StateTransition) to() common.Address {
+	if st.msg == nil || st.msg.To() == nil /* contract creation */ {
+		return common.Address{}
+	}
+	return *st.msg.To()
+}
+
 func (st *StateTransition) useGas(amount uint64) error {
 	if st.gas < amount {
 		return ErrOutOfGas
@@ -300,13 +308,13 @@ func (st *StateTransition) createWasmAccount() error {
 }
 
 func (st *StateTransition) callWasm() error {
-	Transfer(st.state, st.msg.From(), *st.msg.To(), st.value)
+	Transfer(st.state, st.msg.From(), st.to(), st.value)
 
 	code := st.state.GetCode(*st.msg.To())
 	if len(st.data) > 0 && len(code) > 0 {
 		from := st.msg.From()
-		to := st.msg.To()
-		owner := st.state.GetContractOwner(*st.msg.To())
+		to := st.to()
+		owner := st.state.GetContractOwner(to)
 		value := st.value.Uint64()
 		result := CallWasmContract(unsafe.Pointer(&code[0]), len(code), unsafe.Pointer(&st.data[0]), len(st.data), unsafe.Pointer(&from[0]), unsafe.Pointer(&to[0]), unsafe.Pointer(&owner[0]), value, &st.gas, st.callbackParamKey)
 		if result != 0 {
@@ -326,7 +334,7 @@ func (st *StateTransition) transferIsAllowed() bool {
 		return true
 	}
 
-	if st.prevStateDb.InTransferBlackList(*st.msg.To()) {
+	if st.prevStateDb.InTransferBlackList(st.to()) {
 		log.Warn("Transfer is not allowed, To address is in the black list", "from", st.msg.From(), "to", *st.msg.To())
 		return false
 	}
