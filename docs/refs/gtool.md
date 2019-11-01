@@ -1,12 +1,11 @@
-Command Line Usage <gtool>
-====================================
-Help
-------------------------------------
-.. parsed-literal::
+# Command Line Usage(gtool)
+
+## Help
+```
     gtool command [command options] subcommand
 
     VERSION:
-       0.2.0-stable
+       0.2.1-stable
 
     COMMANDS:
        admin   Manage Fractal Node
@@ -17,12 +16,10 @@ Help
        state   Query Fractal State
        tx      Generate Transaction
        help    Shows a list of commands or help for one command
+```
 
-gtool admin
-------------------------------------
-Help
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. parsed-literal::
+## gtool admin
+```
     NAME:
        gtool admin - Manage Fractal Node
 
@@ -38,12 +35,10 @@ Help
        --rpc value   rpc service address
        --addr value  The address for keys
        --help, -h    show help
+```
 
-gtool block
-------------------------------------
-Help
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. parsed-literal::
+## gtool block
+```
     NAME:
        gtool block - Query Block
 
@@ -58,21 +53,10 @@ Help
        --height value  block height (default: 0)
        --bhash value   block hash
        --help, -h      show help
+```
 
-Example - Query Block with Height
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Assume:
-    * RPC server address is *http://127.0.0.1:8545*
-
-.. code-block:: bash
-
-    gtool block --rpc http://127.0.0.1:8545 --height 100 query
-
-gtool gstate
-------------------------------------
-Help
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. parsed-literal::
+## gtool gstate
+```
     NAME:
        gtool gstate - Manage Fractal Genesis State
 
@@ -87,12 +71,10 @@ Help
        --gstake value          The total stake in genesis state (default: 100000000000000000)
        --packerKeyOwner value  The owner address of packer key contract stake
        --help, -h              show help
+```
 
-gtool keys
-------------------------------------
-Help
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. parsed-literal::
+## gtool keys
+```
     NAME:
        gtool keys - Manage Fractal Keys
 
@@ -113,12 +95,10 @@ Help
        --rpc value      rpc service address
        --chainid value  chain id (default: 0)
        --help, -h       show help
+```
 
-gtool packer
-------------------------------------
-Help
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. parsed-literal::
+## gtool packer
+```
     NAME:
        gtool packer - Manage Fractal Packer
 
@@ -141,12 +121,10 @@ Help
        --packerCoinbase value  packer coinbase
        --packerPubKey value    packer public key (ECDSA)
        --help, -h              show help
+```
 
-gtool state
-------------------------------------
-Help
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. parsed-literal::
+## gtool state
+```
     NAME:
        gtool state - Query Fractal State
 
@@ -163,12 +141,10 @@ Help
        --table value  table name
        --skey value   storage key
        --help, -h     show help
+```
 
-gtool tx
-------------------------------------
-Help
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. parsed-literal::
+## gtool tx
+```
     NAME:
        gtool tx - Generate Transaction
 
@@ -196,59 +172,35 @@ Help
        --action value    action name
        --args value      args json
        --help, -h        show help
+```
 
-Examples
-------------------------------------
+## Examples
+### Query Enode Address
+```
+$ gtool admin --rpc http://rpc1.testnet.fractalblock.com:8545 enode
+```
 
-Query Enode Address
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Assume:
-    * RPC server address is *http://127.0.0.1:8545*
+### Query Block with Height
+```
+$ gtool block --rpc http://rpc1.testnet.fractalblock.com:8545 --height 100 query
+```
 
-.. code-block:: console
+### Query Block with Hash
+```
+$ gtool block --rpc http://rpc1.testnet.fractalblock.com:8545 --hash 0x2f06e35a6d3b6ef2d9f4abb607082c240ca77e3be9dd23080ee2fc4467411a6f query
+```
 
-    $ gtool admin --rpc http://127.0.0.1:8545 enode
+### Query Keys in Local
+```
+$ gtool keys --keys data/keys --pass 123456 list
+```
 
-Query Block with Hash
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Assume:
-    * RPC server address is *http://127.0.0.1:8545*
-    * Block hash is *0x2f06e35a6d3b6ef2d9f4abb607082c240ca77e3be9dd23080ee2fc4467411a6f*
+### Query Account Balance
+```
+$ gtool state --rpc http://rpc1.testnet.fractalblock.com:8545 --addr 0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898 account
+```
 
-.. code-block:: console
-
-    $ gtool block --rpc http://127.0.0.1:8545 --hash 0x2f06e35a6d3b6ef2d9f4abb607082c240ca77e3be9dd23080ee2fc4467411a6f query
-
-Query Keys in Local
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Assume:
-    * Your key's password is *888*
-    * Your key's folder is *data/keys*
-
-.. code-block:: console
-
-    $ gtool keys --keys data/keys --pass 888 list
-
-Query Account Balance
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Assume:
-    * RPC server address is *http://127.0.0.1:8545*
-    * Your account address is *0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898*
-
-.. code-block:: console
-
-    $ gtool state --rpc http://127.0.0.1:8545 --addr 0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898 account
-
-Send Transaction to Transfer Token
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Assume:
-    * Your key's password is *888*
-    * Your key's folder is *data/keys*
-    * RPC server address is *http://127.0.0.1:8545*
-    * Account address which you want to transfer to, is *0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898*
-    * The token amount you want to transfer, is *123456789*
-    * You test on Fractal Testnet(chainid: 2)
-
-.. code-block:: console
-
-    $ gtool tx --rpc http://127.0.0.1:8545 --keys data/keys --pass 888 --to 0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898 --value 123456789 --chainid 2 send
+### Send Transaction to Transfer Token
+```
+$ gtool tx --rpc http://rpc1.testnet.fractalblock.com:8545 --keys data/keys --pass 123456 --to 0xfd4b1e33d9155b469b87a9a1059d15fdcb67f898 --value 123456789 --chainid 2 send
+```
