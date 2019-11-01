@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/fractal-platform/fractal/utils/log"
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/fjl/memsize/memsizeui"
+	"github.com/fractal-platform/fractal/utils/log"
 	"github.com/rcrowley/go-metrics"
 	"github.com/rcrowley/go-metrics/exp"
 	"gopkg.in/urfave/cli.v1"
-	"net/http"
-	_ "net/http/pprof"
 )
 
 var Memsize memsizeui.Handler

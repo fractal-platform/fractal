@@ -80,7 +80,7 @@ func (m *MainBranchRecord) eventLoop(events chan types.BlockExecutedEvent, sub e
 			// fast sync: store to db directly
 			batch := db.NewBatch()
 			dbaccessor.WriteHeightBlockMap(batch, block.Header.Height, block.FullHash())
-			if savedHeight < block.Header.Height {
+			if savedHeight <= block.Header.Height {
 				dbaccessor.WriteMainBranchHeadHeightAndHash(batch, block.Header.Height, block.FullHash())
 			}
 			batch.Write()
@@ -92,9 +92,7 @@ func (m *MainBranchRecord) eventLoop(events chan types.BlockExecutedEvent, sub e
 			log.Info("MainBranchRecord eventLoop: main chain head grows", "height", block.Header.Height)
 			batch := db.NewBatch()
 			dbaccessor.WriteHeightBlockMap(batch, block.Header.Height, block.FullHash())
-			if savedHeight < block.Header.Height {
-				dbaccessor.WriteMainBranchHeadHeightAndHash(batch, block.Header.Height, block.FullHash())
-			}
+			dbaccessor.WriteMainBranchHeadHeightAndHash(batch, block.Header.Height, block.FullHash())
 			batch.Write()
 		} else if IsReOrg(block, currentHead) {
 			log.Info("MainBranchRecord eventLoop: isReOrg", "oldHeight", currentHead.Header.Height, "newHeight", block.Header.Height)
@@ -107,15 +105,13 @@ func (m *MainBranchRecord) eventLoop(events chan types.BlockExecutedEvent, sub e
 			for i := 1; i < len(reorg); i++ {
 				dbaccessor.WriteHeightBlockMap(batch, reorg[i].Height, reorg[i].FullHash())
 			}
-			if savedHeight < block.Header.Height {
-				dbaccessor.WriteMainBranchHeadHeightAndHash(batch, block.Header.Height, block.FullHash())
-			}
+			dbaccessor.WriteMainBranchHeadHeightAndHash(batch, block.Header.Height, block.FullHash())
 			batch.Write()
 		}
 	}
 }
 
-func (m *MainBranchRecord) GetMainBranchBlock(height uint64) (*types.BlockHeader, error) {
+func (m *MainBranchRecord) GetMainBranchBlock(height uint64) (*types.Block, error) {
 	hash, err := dbaccessor.ReadHeightBlockMap(m.blockChain.Database(), height)
 	if err != nil {
 		return nil, err
@@ -125,5 +121,5 @@ func (m *MainBranchRecord) GetMainBranchBlock(height uint64) (*types.BlockHeader
 		return nil, errGetBlockNil
 	}
 
-	return &block.Header, nil
+	return block, nil
 }

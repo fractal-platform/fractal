@@ -1,17 +1,19 @@
 // Copyright 2018 The go-fractal Authors
 // This file is part of the go-fractal library.
 
-// Package network contains the implementation of network protocol handler for fractal.
+// Package protocol contains the definitions of network protocol for fractal.
 package protocol
 
 import (
+	"strconv"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/types"
-	"strconv"
 )
 
 // Constants to match up protocol versions and messages
 const (
+	//ftl1 = 1
 	ftl2 = 2
 )
 
@@ -21,53 +23,88 @@ var ProtocolName = "ftl"
 // ProtocolVersions are the upported versions of the ftl protocol (first is primary).
 var ProtocolVersions = []uint{ftl2}
 
-// ProtocolLengths are the number of implemented message corresponding to different protocol versions.
-var ProtocolLengths = []uint64{20}
-
 const ProtocolMaxMsgSize = 512 * 1024 * 1024 // Maximum cap on the size of a protocol message
+
+type MsgCode byte
 
 // ftl protocol message codes
 const (
-	// Protocol messages belonging to ftl1
-	StatusMsg = 0x00
+	MsgCodeBegin = iota
+
+	// for handshake
+	StatusMsg
 
 	// for block propagation
-	NewBlockMsg = 0x01
+	NewBlockMsg
 
 	//
-	GetBlocksMsg = 0x02
-	BlocksMsg    = 0x03
+	BlockReqMsg
+	BlockRspMsg
 
 	// for tx propagation
-	TxMsg = 0x04
+	TxMsg
 
 	// for tx package propagation
-	TxPackageHashMsg = 0x05
-	GetTxPackageMsg  = 0x06
-	TxPackageMsg     = 0x07
+	TxPackageHashMsg
+	TxPackageReqMsg
+	TxPackageRspMsg
 
 	// for state sync
-	GetNodeDataMsg = 0x08
-	NodeDataMsg    = 0x09
+	NodeDataReqMsg
+	NodeDataRspMsg
 
 	// for hash list (cp2fp, fastsync, peersync)
-	SyncHashListReqMsg = 0x0a
-	SyncHashListResMsg = 0x0b
+	SyncHashListReqMsg
+	SyncHashListRspMsg
 
-	// for pre blocks sync
-	SyncPreBlocksForStateReqMsg = 0x0c
-	SyncPreBlocksForStateRspMsg = 0x0d
+	// for hash tree sync
+	SyncHashTreeReqMsg
+	SyncHashTreeRspMsg
 
-	// for post blocks sync
-	SyncPostBlocksForStateReqMsg = 0x0e
-	SyncPostBlocksForStateRspMsg = 0x0f
+	// for post fixpoint blocks sync
+	SyncBestPeerBlocksReqMsg
+	SyncBestPeerBlocksRspMsg
 
 	// for block sync (cp2fp, fastsync, peersync)
-	GetPkgsForBlockSyncMsg   = 0x10
-	PkgsForBlockSyncMsg      = 0x11
-	GetBlocksForBlockSyncMsg = 0x12
-	BlocksForBlockSyncMsg    = 0x13
+	PkgsForBlockSyncReqMsg
+	PkgsForBlockSyncRspMsg
+	BlocksForBlockSyncReqMsg
+	BlocksForBlockSyncRspMsg
+
+	MsgCodeEnd
 )
+
+// ProtocolLengths are the number of implemented message corresponding to different protocol versions.
+var ProtocolLengths = []uint64{MsgCodeEnd}
+
+func (s MsgCode) String() string {
+	if s <= MsgCodeBegin || s >= MsgCodeEnd {
+		return "Unknown"
+	}
+
+	list := [...]string{
+		"StatusMsg",
+		"NewBlockMsg",
+		"BlockReqMsg",
+		"BlockRspMsg",
+		"TxMsg",
+		"TxPackageHashMsg",
+		"TxPackageReqMsg",
+		"TxPackageRspMsg",
+		"NodeDataReqMsg",
+		"NodeDataRspMsg",
+		"SyncHashListReqMsg",
+		"SyncHashListRspMsg",
+		"SyncHashTreeReqMsg",
+		"SyncHashTreeRspMsg",
+		"SyncBestPeerBlocksReqMsg",
+		"SyncBestPeerBlocksRspMsg",
+		"PkgsForBlockSyncReqMsg",
+		"PkgsForBlockSyncRspMsg",
+		"BlocksForBlockSyncReqMsg",
+		"BlocksForBlockSyncRspMsg"}
+	return list[s-1]
+}
 
 type SyncStage byte
 
@@ -155,19 +192,8 @@ type StatusData struct {
 	GenesisHash       common.Hash
 }
 
-// newBlockData is the network packet for the block propagation message.
-type NewBlockData struct {
-	Block  *types.Block
-	Height uint64
-}
-
-// getBlocksData represents a block query.
-type GetBlocksData struct {
-	OriginHash common.Hash // block from which to retrieve Blocks
-	Depth      uint64
-	Reverse    bool
-	RoundFrom  uint64 // block from which to retrieve Blocks
-	RoundTo    uint64 // block to which to retrieve Blocks
+type RequestData struct {
+	ReqID uint64
 }
 
 //
@@ -179,43 +205,17 @@ type FetchBlockRsp struct {
 }
 
 type HashElem struct {
-	Height uint64
-	Hash   common.Hash
-	Round  uint64
+	Height  uint64
+	Hash    common.Hash
+	Round   uint64
+	AccHash common.Hash
 }
 
 func (h HashElem) String() string {
-	return strconv.FormatUint(h.Height, 10) + h.Hash.String() + strconv.FormatUint(h.Round, 10)
+	return strconv.FormatUint(h.Height, 10) + h.Hash.String() + strconv.FormatUint(h.Round, 10) + h.AccHash.String()
 }
 
 type HashElems []*HashElem
-
-//func (h HashElems) reverse() HashElems {
-//	var resultHList HashElems
-//	if len(h) == 0 {
-//		return h
-//	} else {
-//		for i := len(h) - 1; i >= 0; i-- {
-//			resultHList = append(resultHList, h[i])
-//		}
-//	}
-//	return resultHList
-//}
-
-type SyncHashListReq struct {
-	Stage      SyncStage
-	Type       SyncHashType
-	HashFrom   common.Hash
-	HeightFrom uint64
-	HashTo     common.Hash
-	HeightTo   uint64
-}
-
-type SyncHashListRsp struct {
-	Stage  SyncStage
-	Type   SyncHashType
-	Hashes HashElems
-}
 
 func (h HashElem) CompareTo(h1 HashElem) int {
 	if h.Height > h1.Height {
@@ -234,28 +234,63 @@ func (h HashElem) CompareTo(h1 HashElem) int {
 	return -1
 }
 
+type SyncHashListReq struct {
+	RequestData
+	Stage      SyncStage
+	Type       SyncHashType
+	HashFrom   common.Hash
+	HeightFrom uint64
+	HashTo     common.Hash
+	HeightTo   uint64
+}
+
+type SyncHashListRsp struct {
+	RequestData
+	Stage  SyncStage
+	Type   SyncHashType
+	Hashes HashElems
+}
+
+type SyncHashTreeReq struct {
+	RequestData
+	HashFrom common.Hash
+	HashTo   common.Hash
+}
+
+type SyncHashTreeRsp struct {
+	RequestData
+	TreePoint types.TreePoint
+	HashTree  types.HashTree
+}
+
 type IntervalHashReq struct {
+	RequestData
 	HashEFrom HashElem
 	HashETo   HashElem
 }
 
 type SyncPkgsReq struct {
+	RequestData
 	Stage     SyncStage
 	PkgHashes []common.Hash
 }
 
 type SyncPkgsRsp struct {
+	RequestData
 	Stage SyncStage
 	Pkgs  types.TxPackages
 }
 
 type SyncBlocksReq struct {
+	RequestData
 	Stage     SyncStage
+	HashReqs  []common.Hash
 	RoundFrom uint64 // block from which to retrieve Blocks
 	RoundTo   uint64 // block to which to retrieve Blocks
 }
 
 type SyncBlocksRsp struct {
+	RequestData
 	Stage     SyncStage
 	Blocks    types.Blocks
 	RoundFrom uint64 // block from which to retrieve Blocks

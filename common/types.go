@@ -154,6 +154,13 @@ func (h UnprefixedHash) MarshalText() ([]byte, error) {
 	return []byte(hex.EncodeToString(h[:])), nil
 }
 
+type Hashes []Hash
+
+func (h Hashes) String() string {
+	res, _ := json.Marshal(h)
+	return string(res)
+}
+
 /////////// Address
 
 // Address represents the 20 byte address of an Ethereum account.

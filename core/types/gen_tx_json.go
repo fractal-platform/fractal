@@ -5,9 +5,10 @@ package types
 import (
 	"encoding/json"
 	"errors"
+	"math/big"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
-	"math/big"
 )
 
 var _ = (*txdataMarshaling)(nil)

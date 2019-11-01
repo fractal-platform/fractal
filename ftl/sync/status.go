@@ -66,9 +66,11 @@ const (
 	FastSyncStatusCheckMainChain
 
 	// for fix point fetch
+	FastSyncStatusFixPointHashTree
 	FastSyncStatusFixPointPreBlocks
 	FastSyncStatusFixPointPreStates
 	FastSyncStatusFixPointPostBlocks
+	FastSyncStatusFixPointBestBlocks
 
 	FastSyncStatusEnd
 )
@@ -83,9 +85,12 @@ func (s FastSyncStatus) String() string {
 		"ShortHashList",
 		"LongHashList",
 		"CheckMainChain",
+		"FixPointHashTree",
 		"FixPointPreBlocks",
 		"FixPointPreStates",
-		"FixPointPostBlocks"}
+		"FixPointPostBlocks",
+		"FixPointBestBlocks",
+	}
 	return list[s-1]
 }
 
@@ -96,6 +101,11 @@ func (s *Synchronizer) GetSyncStatus() SyncStatus {
 func (s *Synchronizer) IsSyncStatusNormal() bool {
 	status := s.GetSyncStatus()
 	return status == SyncStatusNormal
+}
+
+func (s *Synchronizer) IsSyncStatusInit() bool {
+	status := s.GetSyncStatus()
+	return status == SyncStatusInit
 }
 
 func (s *Synchronizer) GetFastSyncMode() FastSyncMode {

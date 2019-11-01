@@ -18,13 +18,14 @@ package p2p
 
 import (
 	"crypto/ecdsa"
-	"github.com/fractal-platform/fractal/crypto/sha3"
-	"github.com/fractal-platform/fractal/p2p/discover"
-	"github.com/fractal-platform/fractal/utils/log"
 	"math/rand"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/fractal-platform/fractal/crypto/sha3"
+	"github.com/fractal-platform/fractal/p2p/discover"
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 func init() {

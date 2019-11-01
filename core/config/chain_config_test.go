@@ -5,9 +5,10 @@
 package config
 
 import (
+	"testing"
+
 	"github.com/fractal-platform/fractal/dbwrapper"
 	. "github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestSetupChainConfig(t *testing.T) {

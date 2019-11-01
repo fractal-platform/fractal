@@ -2,16 +2,19 @@ package downloader
 
 import (
 	"errors"
-	"github.com/fractal-platform/fractal/utils/log"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 var (
 	MinBlockRoundFetch = 500
 	MaxBlockRoundFetch = 1000 // Amount of rounds of blocks to allow fetching per request
+	MinBlockFetch      = 50
+	MaxBlockFetch      = 100
 
 	MinStateFetch = 1
 	MaxStateFetch = 384 // Amount of node state values to allow fetching per request
@@ -23,8 +26,9 @@ var (
 	RttMinConfidence = 0.1              // Worse confidence factor in our estimated RTT value
 	TtlScaling       = 3                // Constant scaling factor for RTT -> TTL conversion
 	TtlLimit         = 90 * time.Second // Maximum TTL allowance to prevent reaching crazy timeouts
-	BytesPerRound    = 3 * 100          // Average bits of blocks per round
-	BytesPerPkg      = 10 * 1024        //Average bit of kpg
+	BytesPerRound    = 3 * 100          // Average bytes of blocks per round
+	BytesPerPkg      = 10 * 1024        // Average bytes of pkg
+	BytesPerBlock    = 8 * 1024         // Average bytes of block
 	qosTuningPeers   = 5                // Number of peers to tune based on (best peers)
 	rttMinEstimate   = 2 * time.Second  // Minimum Round-trip time to target for download requests
 )

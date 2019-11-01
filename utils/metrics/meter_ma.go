@@ -1,12 +1,13 @@
 package metrics
 
 import (
-	ds "github.com/fractal-platform/fractal/utils/datastructure"
-	"github.com/rcrowley/go-metrics"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	ds "github.com/fractal-platform/fractal/utils/datastructure"
+	"github.com/rcrowley/go-metrics"
 )
 
 // StandardMA is the standard implementation of an MA and tracks the number

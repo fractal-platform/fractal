@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/keys"

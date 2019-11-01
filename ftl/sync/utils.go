@@ -41,14 +41,14 @@ func getBestPeerByHashes(peers []peer, peerHashes map[string]protocol.HashElems)
 // TODO: add test for this function
 func getCommPreFromShortList(hashLists []protocol.HashElems) (protocol.HashElem, protocol.HashElem, error) {
 	//	//if len(shortHashList)=30, make sure we have common prefix in  the lower [0,10]
-	lowerHashMap := make(map[protocol.HashElem]int)
+	lowerHashMap := make(map[common.Hash]int)
 	for _, hashList := range hashLists {
 		//we have checked len(hashList) ==s.config.shortHashListLength
 		for i := len(hashList) / 2; i < len(hashList); i++ {
-			if _, ok := lowerHashMap[*hashList[i]]; ok {
-				lowerHashMap[*hashList[i]] = lowerHashMap[*hashList[i]] + 1
+			if _, ok := lowerHashMap[hashList[i].Hash]; ok {
+				lowerHashMap[hashList[i].Hash] = lowerHashMap[hashList[i].Hash] + 1
 			} else {
-				lowerHashMap[*hashList[i]] = 1
+				lowerHashMap[hashList[i].Hash] = 1
 			}
 		}
 	}

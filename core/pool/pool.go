@@ -33,13 +33,21 @@ var (
 	// one present in the local chain.
 	ErrNonceTooLow = errors.New("nonce too low")
 
-	ErrInsufficientFunds = errors.New("insufficient funds for gas limit * price + value")
+	// ErrInsufficientFunds is returned if the total cost of executing a transaction
+	// is higher than the balance of the user's account.
+	ErrInsufficientFunds = errors.New("insufficient funds for gas fee (based on gas limit) + value")
 
 	ErrIsNotAPacker = errors.New("this transaction should be sent to a packer")
 )
 
 type sender interface {
-	Sender(ele Element) (common.Address, error) // Sender is used to find the from address of the element.
+	sender(ele Element) (common.Address, error) // Sender is used to find the from address of the element.
+}
+
+type helper interface {
+	reset(pool Pool, block *types.Block)                                           // Invoked when a new block coming, Reset already surrounded by pool's lock.
+	validate(pool Pool, ele Element, currentState StateDB, chain BlockChain) error // When add a new element into pool, pool's user can provide some Validate logic.
+	sender(ele Element) (common.Address, error)                                    // Sender is used to find the from address of the element.
 }
 
 // pool contains all currently known elements. Elements (transactions or transaction packages)
@@ -61,7 +69,7 @@ type pool struct {
 	queue                  map[common.Address]*EleList  // Queued and processable elements
 	beats                  map[common.Address]time.Time // Last heartbeat from each known account
 	all                    *eleLookup                   // All elements to allow lookups
-	helper                 Helper                       // Helper give some hooks for outside
+	helper                 helper                       // helper give some hooks
 	queuedDiscardCounter   metrics.Counter
 	queuedRateLimitCounter metrics.Counter // Dropped due to rate limiting
 	invalidTxCounter       metrics.Counter
@@ -71,7 +79,7 @@ type pool struct {
 
 // NewPool creates a new element pool to gather, sort and filter inbound
 // elements from the network.
-func NewPool(conf config.PoolConfig, chain BlockChain, elemType reflect.Type, helper Helper) Pool {
+func NewPool(conf config.PoolConfig, chain BlockChain, elemType reflect.Type, helper helper) Pool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	conf = (&conf).Sanitize()
 
@@ -207,9 +215,9 @@ func (pool *pool) initState(newHead *types.Block) {
 // of the element pool is valid with regard to the chain state.
 func (pool *pool) doReset(newHead *types.Block) {
 	// invoke the hook
-	pool.helper.Reset(pool, newHead)
+	pool.helper.reset(pool, newHead)
 
-	// The newly come block is the main chain header
+	// The block chain height increased
 	if newHead.Header.Height > pool.currentHeight {
 		pool.currentHeight = newHead.Header.Height
 
@@ -231,7 +239,7 @@ func (pool *pool) doReset(newHead *types.Block) {
 	}
 
 	queue := pool.stats()
-	log.Info("elem_pool doReset", "queue", queue, "all", len(pool.all.all))
+	log.Info("Element pool doReset", "queue", queue, "all", len(pool.all.all))
 }
 
 // Stop terminates the element pool.
@@ -365,7 +373,7 @@ func (pool *pool) add(ele Element, local bool) (bool, error) {
 		return false, err
 	}
 
-	from, _ := pool.helper.Sender(ele)
+	from, _ := pool.helper.sender(ele)
 	// Mark local addresses and journal local elements
 	if local {
 		if !pool.locals.contains(from) {
@@ -385,7 +393,7 @@ func (pool *pool) validate(ele Element) error {
 	if pool.helper == nil {
 		return nil
 	}
-	return pool.helper.Validate(pool, ele, pool.currentState, pool.chain)
+	return pool.helper.validate(pool, ele, pool.currentState, pool.chain)
 }
 
 // enqueueEle inserts a new element into the pending element queue.
@@ -393,7 +401,7 @@ func (pool *pool) validate(ele Element) error {
 // Note, this method assumes the pool lock is held!
 func (pool *pool) enqueueEle(hash common.Hash, ele Element) (bool, error) {
 	// Try to insert the element into the future queue
-	from, _ := pool.helper.Sender(ele) // already validated
+	from, _ := pool.helper.sender(ele) // already validated
 	if pool.queue[from] == nil {
 		pool.queue[from] = newEleList(false)
 	}
@@ -511,7 +519,7 @@ func (pool *pool) removeEle(hash common.Hash) {
 	if ele == nil {
 		return
 	}
-	addr, _ := pool.helper.Sender(ele) // already validated during insertion
+	addr, _ := pool.helper.sender(ele) // already validated during insertion
 
 	// Remove it from the list of known elements
 	pool.all.Remove(hash)
@@ -574,7 +582,7 @@ func (pool *pool) demoteUnexecutables() {
 	removed := 0
 	for addr, list := range pool.queue {
 		var nonce uint64
-		if pool.elemType == reflect.TypeOf(types.TxPackage{}) {
+		if pool.elemType == TxPackageType {
 			nonce = stateBeforeCacheHeight.GetPackageNonce(addr)
 		} else {
 			nonce = stateBeforeCacheHeight.GetNonce(addr)
@@ -590,9 +598,9 @@ func (pool *pool) demoteUnexecutables() {
 			removed += 1
 		}
 
-		// drop if the package is too old
-		if pool.elemType == reflect.TypeOf(types.TxPackage{}) {
-			var filter = func(ele Element) bool {
+		// Drop if the package is too old (does not satisfy the chain rules of tx package entry)
+		if pool.elemType == TxPackageType {
+			var filter = func(ele Element) bool { // true => drop
 				relateBlock := pool.chain.GetBlock(ele.(*types.TxPackage).BlockFullHash())
 				if relateBlock == nil {
 					return true
@@ -663,15 +671,6 @@ func (as *accountSet) contains(addr common.Address) bool {
 	return exist
 }
 
-// containsEle checks if the Sender of a given element is within the set. If the Sender
-// cannot be derived, this method returns false.
-//func (as *accountSet) containsEle(ele Element) bool {
-//	if addr, err := as.sender.Sender(ele); err == nil {
-//		return as.contains(addr)
-//	}
-//	return false
-//}
-
 // add inserts a new address into the set to track.
 func (as *accountSet) add(addr common.Address) {
 	as.accounts[addr] = struct{}{}
@@ -709,18 +708,6 @@ type eleLookup struct {
 func newEleLookup() *eleLookup {
 	return &eleLookup{
 		all: make(map[common.Hash]Element),
-	}
-}
-
-// Range calls f on each key and value present in the map.
-func (l *eleLookup) Range(f func(hash common.Hash, ele Element) bool) {
-	l.lock.RLock()
-	defer l.lock.RUnlock()
-
-	for key, value := range l.all {
-		if !f(key, value) {
-			break
-		}
 	}
 }
 

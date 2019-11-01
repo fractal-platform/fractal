@@ -10,11 +10,13 @@ type SyncConfig struct {
 	Interval                      int   //first time to sync long hashList interval
 	CheckMainChainPostBlockLength int   //should be less than shortHashListLength
 
+	TimeOutOfFixPointHashTree     int
 	TimeOutOfFixPointPreBlock     int
 	LongTimeOutOfFixPointFinish   int
 	LongTimeOutOfFullfillLongList int
 	LongTimeOutOfIntevalList      int
 	LongTimeOutOfLongList         int
+	LongTimeOutOfCp2fpHashTree    int
 
 	ShortTimeOutOfSyncVeryHigh int
 	ShortTimeOutOfShortLists   int
@@ -29,15 +31,17 @@ var DefaultSyncConfig = SyncConfig{
 	MinFastSyncPeerCount:          1,
 	CommonPrefixCount:             3,
 	HeightDiff:                    30,
-	ShortHashListLength:           30,
+	ShortHashListLength:           50,
 	Interval:                      200, //first time to sync long hashList interval
 	CheckMainChainPostBlockLength: 20,  //should be less than shortHashListLength
 
+	TimeOutOfFixPointHashTree:     120000000,
 	TimeOutOfFixPointPreBlock:     120000000,
 	LongTimeOutOfFixPointFinish:   120000000,
 	LongTimeOutOfFullfillLongList: 120000000,
 	LongTimeOutOfIntevalList:      120000000,
 	LongTimeOutOfLongList:         120000000,
+	LongTimeOutOfCp2fpHashTree:    120000000,
 
 	ShortTimeOutOfSyncVeryHigh: 60000000,
 	ShortTimeOutOfShortLists:   60000000,

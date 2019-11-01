@@ -3,30 +3,34 @@ package ftl
 import (
 	"context"
 	"fmt"
+	"math/big"
+	"path"
+	"strings"
+
 	"github.com/fractal-platform/fractal/chain"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/config"
 	"github.com/fractal-platform/fractal/core/dbaccessor"
 	"github.com/fractal-platform/fractal/core/pool"
 	"github.com/fractal-platform/fractal/core/types"
+	"github.com/fractal-platform/fractal/crypto"
 	"github.com/fractal-platform/fractal/dbwrapper"
+	"github.com/fractal-platform/fractal/event"
 	"github.com/fractal-platform/fractal/ftl/api"
 	"github.com/fractal-platform/fractal/ftl/network"
 	"github.com/fractal-platform/fractal/ftl/protocol"
 	ftl_sync "github.com/fractal-platform/fractal/ftl/sync"
 	"github.com/fractal-platform/fractal/keys"
 	"github.com/fractal-platform/fractal/logbloom/bloomquery"
+	"github.com/fractal-platform/fractal/logbloom/bloomstorage"
 	"github.com/fractal-platform/fractal/miner"
 	"github.com/fractal-platform/fractal/p2p"
 	"github.com/fractal-platform/fractal/packer"
 	"github.com/fractal-platform/fractal/packer/pksvc"
 	"github.com/fractal-platform/fractal/rpc/server"
-	"github.com/fractal-platform/fractal/transaction"
 	"github.com/fractal-platform/fractal/transaction/txexec"
 	"github.com/fractal-platform/fractal/utils"
 	"github.com/fractal-platform/fractal/utils/log"
-	"math/big"
-	"strings"
 )
 
 // Fractal implements the Fractal full node service.
@@ -45,7 +49,8 @@ type Fractal struct {
 	// chain object
 	blockchain    *chain.BlockChain
 	bloomRequests chan chan *bloomquery.Retrieval // Channel receiving bloom data retrieval requests
-	
+	bloomIndexer  *bloomstorage.BloomIndexer      // Bloom indexer operating during block imports
+
 	//
 	txPool  pool.Pool
 	pkgPool pool.Pool
@@ -53,6 +58,10 @@ type Fractal struct {
 	// key manager
 	miningKeyManager *keys.MiningKeyManager
 	packerKeyManager *keys.PackerKeyManager
+
+	// for check point
+	checkPointPriKey   crypto.PrivateKey
+	checkPointNodeType types.CheckPointNodeTypeEnum
 
 	//
 	packer packer.Packer
@@ -110,18 +119,28 @@ func NewFtl(cfg *config.Config) (*Fractal, error) {
 		return nil, err
 	}
 
+	// setup params about check point
+	checkPointKeyFile := path.Join(ftl.config.NodeConfig.ResolvePath("keys"), "check_point_key.json")
+	ftl.checkPointPriKey, err = keys.LoadCheckPointKey(checkPointKeyFile, ftl.config.CheckPointPriKeyPass)
+	if err != nil {
+		log.Info("Set check point node type: normal")
+		ftl.checkPointNodeType = types.NormalNode
+	} else {
+		log.Info("Set check point node type: special")
+		ftl.checkPointNodeType = types.SpecialNode
+	}
+
 	// create blockchain
 	executor := txexec.NewExecutor(cfg.ChainConfig.TxExecutorType, cfg.ChainConfig.MaxNonceBitLength, ftl.signer)
-	ftl.blockchain, err = chain.NewBlockChain(cfg, ftl.chainDb, executor, cfg.CheckPoints, cfg.PackerInfoCacheSize)
+	ftl.blockchain, err = chain.NewBlockChain(cfg, ftl.chainDb, executor, cfg.PackerInfoCacheSize, ftl.checkPointNodeType)
 	if err != nil {
 		log.Error("create blockchain failed", "error", err.Error())
 		return nil, err
 	}
 
 	// setup bloom
-	// TODO: Temporarily not open bloom
-	//ftl.bloomIndexer = bloomstorage.NewBloomIndexer(ftl.chainDb)
-	//ftl.bloomIndexer.Start(ftl.blockchain)
+	ftl.bloomIndexer = bloomstorage.NewBloomIndexer(ftl.chainDb)
+	ftl.bloomIndexer.Start(ftl.blockchain)
 
 	// setup pool
 	if ftl.config.TxPoolConfig.Journal != "" {
@@ -130,8 +149,8 @@ func NewFtl(cfg *config.Config) (*Fractal, error) {
 	if ftl.config.PkgPoolConfig.Journal != "" {
 		ftl.config.PkgPoolConfig.Journal = cfg.NodeConfig.ResolvePath(ftl.config.PkgPoolConfig.Journal)
 	}
-	ftl.pkgPool = pksvc.NewPkgPool(*cfg.PkgPoolConfig, ftl.blockchain)
-	ftl.txPool = transaction.NewTxPool(ftl.config, ftl.blockchain)
+	ftl.pkgPool = pool.NewPkgPool(*cfg.PkgPoolConfig, ftl.blockchain)
+	ftl.txPool = pool.NewTxPool(ftl.config, ftl.blockchain)
 
 	// setup keys for packer&miner
 	ftl.packerKeyManager = keys.NewPackerKeyManager(ftl.config.PackerKeyFolder, ftl.config.KeyPass)
@@ -159,7 +178,7 @@ func NewFtl(cfg *config.Config) (*Fractal, error) {
 		log.Error("create protocol manager failed", "error", err.Error())
 		return nil, err
 	}
-	ftl.synchronizer = ftl_sync.NewSynchronizer(ftl.blockchain, ftl.miner, ftl.packer, ftl.protocolManager.RemovePeer, ftl.protocolManager.FinishDepend, ftl.protocolManager.BlockProcessCh, ftl.config.SyncConfig)
+	ftl.synchronizer = ftl_sync.NewSynchronizer(ftl.blockchain, ftl.miner, ftl.packer, ftl.protocolManager.RemovePeer, ftl.protocolManager.BlockProcessCh, ftl.config.SyncConfig)
 	ftl.protocolManager.SetSynchronizer(ftl.synchronizer)
 	log.Info("Initialising Fractal protocol", "versions", protocol.ProtocolVersions, "network", ftl.config.ChainConfig.ChainID)
 
@@ -177,8 +196,7 @@ func (s *Fractal) Start() error {
 	s.startRPC()
 	s.startAdminRPC()
 
-	// TODO: Temporarily not open bloom
-	//bloomquery.StartBloomHandlers(s.shutdownChan, s.bloomRequests, s.chainDb)
+	bloomquery.StartBloomHandlers(s.shutdownChan, s.bloomRequests, s.chainDb)
 
 	// Start the networking layer
 	s.protocolManager.Start(s.server.MaxPeers)
@@ -262,8 +280,7 @@ func (s *Fractal) startAdminRPC() {
 
 // terminating all internal goroutines
 func (s *Fractal) Stop() error {
-	// TODO: Temporarily not open bloom
-	//s.bloomIndexer.Close()
+	s.bloomIndexer.Close()
 	s.protocolManager.Stop()
 	s.txPool.Stop()
 	s.miner.Stop()
@@ -301,6 +318,10 @@ func (s *Fractal) apiList() []rpcserver.RpcApi {
 			Namespace: "ftl",
 			Version:   "1.0",
 			Service:   api.NewSynchronizerAPI(s),
+		}, {
+			Namespace: "ftl",
+			Version:   "1.0",
+			Service:   api.NewCheckPointAPI(s, s.checkPointPriKey),
 		}, {
 			Namespace: "ftl",
 			Version:   "1.0",
@@ -358,7 +379,11 @@ func (s *Fractal) GetBlock(ctx context.Context, fullHash common.Hash) *types.Blo
 	return s.blockchain.GetBlock(fullHash)
 }
 
-func (s *Fractal) GetMainBranchBlock(height uint64) (*types.BlockHeader, error) {
+func (s *Fractal) CurrentBlock(ctx context.Context) *types.Block {
+	return s.blockchain.CurrentBlock()
+}
+
+func (s *Fractal) GetMainBranchBlock(height uint64) (*types.Block, error) {
 	return s.blockchain.GetMainBranchBlock(height)
 }
 
@@ -389,4 +414,8 @@ func (s *Fractal) GetLogs(ctx context.Context, fullHash common.Hash) [][]*types.
 
 func (b *Fractal) BloomRequestsReceiver() chan chan *bloomquery.Retrieval {
 	return b.bloomRequests
+}
+
+func (b *Fractal) SubscribeInsertBloomEvent(ch chan<- types.BloomInsertEvent) event.Subscription {
+	return b.bloomIndexer.SubscribeInsertBloomEvent(ch)
 }

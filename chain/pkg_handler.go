@@ -1,11 +1,12 @@
 package chain
 
 import (
+	"sync"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/dbaccessor"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/params"
-	"sync"
 )
 
 const (
@@ -43,11 +44,6 @@ func (bc *BlockChain) GetTxPackageList(hashes []common.Hash) types.TxPackages {
 	return pkgList
 }
 
-func (bc *BlockChain) PutTxPackage(txPkg *types.TxPackage) {
-	dbaccessor.WriteTxPkg(bc.db, txPkg)
-	bc.pkgCache.Add(txPkg.Hash(), txPkg)
-}
-
 func (bc *BlockChain) VerifyTxPackage(pkg *types.TxPackage) error {
 	var pubKey types.PackerECPubKey
 
@@ -68,7 +64,7 @@ func (bc *BlockChain) VerifyTxPackage(pkg *types.TxPackage) error {
 	packerIndex, _, _, err := bc.GetPackerInfoByPubKey(blockWhenPacking, pubKey)
 	if err != nil {
 		bc.addFutureBlockTxPackage(pkg.BlockFullHash(), pkg)
-		bc.logger.Error("Verify tx package failed", "err",err, "pkgHash", pkg.Hash(), "blockHash", pkg.BlockFullHash())
+		bc.logger.Error("Verify tx package failed", "err", err, "pkgHash", pkg.Hash(), "blockHash", pkg.BlockFullHash())
 		return ErrTxPackageRelatedBlockNotFound
 	}
 
@@ -119,6 +115,19 @@ func (bc *BlockChain) VerifyTxPackage(pkg *types.TxPackage) error {
 	return nil
 }
 
+func (bc *BlockChain) InsertTxPackage(pkg *types.TxPackage) {
+	dbaccessor.WriteTxPkg(bc.db, pkg)
+	bc.pkgCache.Add(pkg.Hash(), pkg)
+
+	// process future block
+	for _, block := range bc.getFutureTxPackageBlocks(pkg.Hash()) {
+		bc.logger.Info("Process future txPackage block", "txPkgHash", pkg.Hash(), "blockHash", block.FullHash())
+		bc.futureBlockFeed.Send(types.FutureBlockEvent{Block: block})
+	}
+	bc.removeFutureTxPackageBlocks(pkg.Hash())
+}
+
+// TODO: validate pkg by ancestor-block
 func (bc *BlockChain) ValidatePackage(pkg *types.TxPackage, height uint64) error {
 	minPkgHeight := MinPkgHeightAllowedToPutIntoTheBlock(height)
 	maxPkgHeight := MaxPkgHeightAllowedToPutIntoTheBlock(height)

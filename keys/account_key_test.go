@@ -1,9 +1,10 @@
 package keys
 
 import (
-	"github.com/fractal-platform/fractal/utils/log"
 	"os"
 	"testing"
+
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 func TestAccountKeySign(t *testing.T) {

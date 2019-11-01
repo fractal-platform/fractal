@@ -6,9 +6,10 @@
 package difficulty
 
 import (
+	"math/big"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/params"
-	"math/big"
 )
 
 var (

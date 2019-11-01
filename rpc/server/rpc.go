@@ -8,10 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/fractal-platform/fractal/rpc"
 	"io"
 	"mime"
 	"net/http"
+
+	"github.com/fractal-platform/fractal/rpc"
 )
 
 // rpcHandler handles the normal method-call request

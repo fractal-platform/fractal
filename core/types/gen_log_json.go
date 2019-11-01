@@ -5,6 +5,7 @@ package types
 import (
 	"encoding/json"
 	"errors"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 )
@@ -17,7 +18,7 @@ func (l Log) MarshalJSON() ([]byte, error) {
 		Address     common.Address `json:"address" gencodec:"required"`
 		Topics      []common.Hash  `json:"topics" gencodec:"required"`
 		Data        hexutil.Bytes  `json:"data" gencodec:"required"`
-		BlockNumber hexutil.Uint64 `json:"block=Number" gencodec:"required"`
+		BlockNumber hexutil.Uint64 `json:"blockNumber" gencodec:"required"`
 		TxHash      common.Hash    `json:"transactionHash" gencodec:"required"`
 		PkgIndex    uint32         `json:"packageIndex" gencodec:"required"`
 		TxIndex     uint32         `json:"transactionIndex" gencodec:"required"`

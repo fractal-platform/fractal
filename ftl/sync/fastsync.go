@@ -2,12 +2,17 @@ package sync
 
 import (
 	"errors"
-	"github.com/fractal-platform/fractal/core/config"
+
+	"github.com/fractal-platform/fractal/common"
+	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/ftl/protocol"
 )
 
 func (s *Synchronizer) doFastSync() {
 	s.log.Info("start fast sync")
+
+	s.chain.StopCreateCheckPoint()
+
 	if s.miner != nil {
 		s.miner.Stop()
 	}
@@ -27,9 +32,9 @@ func (s *Synchronizer) doFastSync() {
 		return
 	}
 
-	checkPoint := s.getLatestCheckPoint()
+	treePoint := s.getLatestCheckPoint()
 
-	s.log.Info("checkpoint", "checkPoint", checkPoint)
+	s.log.Info("checkpoint", "treePoint", treePoint)
 
 	var complexSync = false
 	var hasSkeleton = false
@@ -38,13 +43,13 @@ func (s *Synchronizer) doFastSync() {
 	for len(honestPeers) > 0 {
 		//do syncFixPoint
 		var fixPoint protocol.HashElem
-		honestPeers, fixPoint, err = s.syncFixPoint(honestPeers, peerShortHashListMap)
+		honestPeers, fixPoint, highestPoint, err := s.syncFixPoint(honestPeers, peerShortHashListMap)
 		if err == nil {
 			s.log.Info("doFastSync syncFixPoint succeed")
 			s.fixPoint = fixPoint
 
 			//sync from break point or checkpoint
-			s.cp2fp.startTask(s.chain.Genesis(), s.chain.GetBlock(fixPoint.Hash), honestPeers)
+			s.cp2fp.startTask(highestPoint.Height, highestPoint.Hash, highestPoint.AccHash, honestPeers)
 
 			s.fastSyncFinishedCh <- struct{}{}
 			return
@@ -54,7 +59,7 @@ func (s *Synchronizer) doFastSync() {
 			s.changeFastSyncMode(FastSyncModeComplex)
 
 			//find fix point using long hash list first ,then interval hash list
-			interHashesMap, peerIndexIntervalMap, err := s.findFixpoint(hasSkeleton, honestPeers, checkPoint, peerLongHashListMap)
+			interHashesMap, peerIndexIntervalMap, err := s.findFixpoint(hasSkeleton, honestPeers, treePoint, peerLongHashListMap)
 			if err != nil {
 				s.log.Error("find fix point failed", "err", err)
 				s.fastSyncErrCh <- struct{}{}
@@ -92,14 +97,14 @@ func (s *Synchronizer) doFastSync() {
 }
 
 //
-func (s *Synchronizer) findFixpoint(hasSkeleton bool, peers []peer, checkpoint config.CheckPoint, peerSkeletonMap map[string]protocol.HashElems) (map[string]protocol.HashElems, map[string]int, error) {
+func (s *Synchronizer) findFixpoint(hasSkeleton bool, peers []peer, checkpoint types.TreePoint, peerSkeletonMap map[string]protocol.HashElems) (map[string]protocol.HashElems, map[string]int, error) {
 	s.log.Info("start to find fix point", "hasSkeleton", hasSkeleton, "peers", peers, "checkpoint", checkpoint, "len(peerSkeletonMap)", len(peerSkeletonMap))
 	var peerLongListIndexMap map[string]int
 	var honestPeerLongHashLists map[string]protocol.HashElems
 	var err error
 
 	peerLongListIndexMap, honestPeerLongHashLists, err = s.findCommonFromSkeletonLists(hasSkeleton, peers,
-		protocol.HashElem{Height: checkpoint.Height, Hash: checkpoint.Hash, Round: checkpoint.Round}, peerSkeletonMap)
+		protocol.HashElem{Height: checkpoint.Height, Hash: checkpoint.FullHash, Round: 0, AccHash: common.Hash{}}, peerSkeletonMap)
 	if err != nil {
 		s.log.Error("get common skeleton lists failed")
 		return nil, nil, err
@@ -115,11 +120,6 @@ func (s *Synchronizer) findFixpoint(hasSkeleton bool, peers []peer, checkpoint c
 //sync short hashLists, if there are not enough good peers, return false
 func (s *Synchronizer) syncShortHashListsForFastSync(peers []peer, peerThreshold int) ([]peer, map[string]protocol.HashElems, error) {
 	s.log.Info("start to sync short hash list")
-
-	if len(peers) < peerThreshold {
-		s.log.Error("not enough peers for sync short hash list", "peerCount", len(peers), "MinFastSyncPeerCount", peerThreshold)
-		return nil, nil, errNotEnoughPeers
-	}
 
 	// set mode & status for fast sync
 	s.changeFastSyncMode(FastSyncModeEasy)
@@ -163,7 +163,7 @@ func (s *Synchronizer) findCommonFromSkeletonLists(hasSkeleton bool, peers []pee
 //find fix point, and then sync fix point
 //return []peer(left honest peers)
 //return err: errNoCommonPrefixInShortHashLists , errPeer ,forceQuit
-func (s *Synchronizer) syncFixPoint(honestPeers []peer, peerShortHashListMap map[string]protocol.HashElems) ([]peer, protocol.HashElem, error) {
+func (s *Synchronizer) syncFixPoint(honestPeers []peer, peerShortHashListMap map[string]protocol.HashElems) ([]peer, protocol.HashElem, protocol.HashElem, error) {
 	s.log.Info("start to find and sync fix point", "honestPeerCount", len(honestPeers), "peerShortHashListMapSize", len(peerShortHashListMap))
 
 	//set honestPeers left
@@ -178,11 +178,16 @@ func (s *Synchronizer) syncFixPoint(honestPeers []peer, peerShortHashListMap map
 	lowestCommonHash, highestCommonHash, err := getCommPreFromShortList(honestShortHashLists)
 	s.log.Info("get common hash from short hash list", "lowestCommonHash", lowestCommonHash, "highestCommonHash", highestCommonHash, "error", err)
 	if err != nil {
-		return leftHonestPeers, lowestCommonHash, err
+		return leftHonestPeers, lowestCommonHash, highestCommonHash, err
 	}
 
 	//get positive seq of common hashList
 	blockSyncHashList := getHashListPositiveSeqByHashFromHashTo(honestShortHashLists[0], lowestCommonHash, highestCommonHash)
+
+	if len(blockSyncHashList) <= types.HashTreeMinLength {
+		s.log.Error("common short hash list length wrong", "len(common)", len(blockSyncHashList))
+		return leftHonestPeers, lowestCommonHash, highestCommonHash, err
+	}
 
 	//sync fixPoint
 	bestPeer, bestHashElem := getBestPeerByHashes(leftHonestPeers, peerShortHashListMap)
@@ -199,12 +204,12 @@ func (s *Synchronizer) syncFixPoint(honestPeers []peer, peerShortHashListMap map
 					}
 				}
 			}
-			return leftHonestPeers, lowestCommonHash, err
+			return leftHonestPeers, lowestCommonHash, highestCommonHash, err
 		} else {
-			return leftHonestPeers, lowestCommonHash, errors.New("need to stop fast sync")
+			return leftHonestPeers, lowestCommonHash, highestCommonHash, errors.New("need to stop fast sync")
 		}
 	}
-	return leftHonestPeers, lowestCommonHash, nil
+	return leftHonestPeers, lowestCommonHash, highestCommonHash, nil
 }
 
 //return a hashList of if there is already common prefix of hashLists
@@ -213,10 +218,10 @@ func getHashListPositiveSeqByHashFromHashTo(hashList protocol.HashElems, hashEFr
 	var hashToIndex int
 	var result protocol.HashElems
 	for index, hashE := range hashList {
-		if hashE.String() == hashEFrom.String() {
+		if hashE.Hash == hashEFrom.Hash {
 			hashFromIndex = index
 		}
-		if hashE.String() == hashETo.String() {
+		if hashE.Hash == hashETo.Hash {
 			hashToIndex = index
 		}
 	}

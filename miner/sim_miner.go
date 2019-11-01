@@ -5,7 +5,6 @@
 package miner
 
 import (
-	"github.com/fractal-platform/fractal/utils/log"
 	"math/big"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/fractal-platform/fractal/crypto/sha3"
 	"github.com/fractal-platform/fractal/event"
 	"github.com/fractal-platform/fractal/rlp"
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 // simMiner creates blocks for simulations.

@@ -1,15 +1,15 @@
 package chain
 
 import (
+	"math"
+	"time"
+
 	"github.com/fractal-platform/fractal/common"
-	"github.com/fractal-platform/fractal/core/config"
 	"github.com/fractal-platform/fractal/core/dbaccessor"
 	"github.com/fractal-platform/fractal/core/state"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/core/wasm"
 	"github.com/fractal-platform/fractal/params"
-	"math"
-	"time"
 )
 
 func (bc *BlockChain) GetBlockBeforeCacheHeight(block *types.Block, cacheHeight uint8) (*types.Block, bool) {
@@ -27,6 +27,17 @@ func (bc *BlockChain) GetBlockBeforeCacheHeight(block *types.Block, cacheHeight 
 	}
 
 	return temp, true
+}
+
+func (bc *BlockChain) Filter(hashes common.Hashes) common.Hashes {
+	var res common.Hashes
+	for _, hash := range hashes {
+		stateEnum := dbaccessor.ReadBlockStateCheck(bc.db, hash)
+		if stateEnum == types.NoBlockState {
+			res = append(res, hash)
+		}
+	}
+	return res
 }
 
 func (bc *BlockChain) execBlock(block *types.Block, confirmedBlocks types.Blocks) (*state.StateDB, types.Receipts, []*types.TxWithIndex, *types.Bloom, error) {
@@ -61,10 +72,7 @@ func (bc *BlockChain) execBlock(block *types.Block, confirmedBlocks types.Blocks
 	}
 
 	// set reward
-	for _, confirmedBlock := range confirmedBlocks {
-		state.ConfirmReward(stateDb, block, confirmedBlock)
-	}
-	state.MiningReward(stateDb, block)
+	state.AddBlockReward(stateDb, block, confirmedBlocks)
 
 	stateDb.Finalise(true)
 	bc.logger.Info("finish finalising statedb", "hash", block.FullHash(), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
@@ -121,6 +129,8 @@ func (bc *BlockChain) insertBlockIntoDB(block *types.Block) {
 	// store hash-childs
 	dbaccessor.WriteBlockChilds(bc.db, block.FullHash(), []common.Hash{})
 
+	// set accHash
+	bc.CalcuAccHash(block)
 	// store block
 	dbaccessor.WriteBlock(bc.db, block)
 
@@ -138,36 +148,32 @@ func (bc *BlockChain) insertBlockIntoDB(block *types.Block) {
 	}
 	bc.logger.Info("Insert block OK", "type", "console", "height", block.Header.Height, "round", block.Header.Round,
 		"hash", block.FullHash(), "difficulty", block.Header.Difficulty,
-		"txCount", len(block.Body.Transactions), "pkgCount", len(block.Body.TxPackageHashes))
+		"txCount", len(block.Body.Transactions), "pkgCount", len(block.Body.TxPackageHashes), "parentHash", block.Header.ParentFullHash)
 	bc.logger.Info("Block metric information", "hash", block.FullHash(),
 		"duration", common.PrettyDuration(time.Since(block.ReceivedAt)), "elapse", elapse, "hop", block.Header.HopCount)
 }
 
-func (bc *BlockChain) checkCheckPoint(currentBlock *types.Block, block *types.Block) bool {
-	if !bc.chainConfig.CheckPointEnable {
-		return true
-	}
-	if block == nil {
-		return false
-	}
-	// get checkPoint below currentBlock
-	checkPoint := config.GetCheckPointBelowBlock(currentBlock, bc.checkPoints)
-	bc.logger.Info("checkCheckPoint", "checkPoint", checkPoint, "block.height", block.Header.Height, "block.round", block.Header.Round, "block.hash", block.FullHash())
-	if checkPoint.Height == block.Header.Height && checkPoint.Hash.String() == block.FullHash().String() {
-		return true
-	} else if block.Header.Height > checkPoint.Height {
-		return true
-	}
-	return false
-}
-
-// insert block
 func (bc *BlockChain) InsertBlock(block *types.Block) {
+	// insert
 	bc.insertBlockIntoDB(block)
 	bc.checkAndSetHead(block)
 
 	//
 	bc.chainUpdateFeed.Send(types.ChainUpdateEvent{Block: block})
+
+	// process future Blocks
+	for _, futureBlock := range bc.getFutureBlocks(block.FullHash()) {
+		bc.logger.Info("Process future block", "hash", futureBlock.FullHash(), "height", futureBlock.Header.Height, "depend", block.FullHash())
+		bc.futureBlockFeed.Send(types.FutureBlockEvent{Block: futureBlock})
+	}
+	bc.removeFutureBlocks(block.FullHash())
+
+	// process future tx packages
+	for _, futureTxPackage := range bc.getFutureBlockTxPackages(block.FullHash()) {
+		bc.logger.Info("Process future txpkg", "pkgHash", futureTxPackage.Hash(), "blockHash", block.FullHash())
+		bc.removeFutureBlockTxPackage(futureTxPackage.Hash())
+		bc.futureTxPackageFeed.Send(types.FutureTxPackageEvent{Pkg: futureTxPackage})
+	}
 }
 
 // insert block before current block
@@ -210,9 +216,14 @@ func (bc *BlockChain) InsertBlockWithState(block *types.Block, state *state.Stat
 	bc.chainUpdateFeed.Send(types.ChainUpdateEvent{Block: block})
 }
 
-func (bc *BlockChain) findCommonPreFix(block1 *types.Block, block2 *types.Block) *types.Block {
+// the common prefix block height must >= height limit
+func (bc *BlockChain) findCommonPrefixWithHeightLimit(block1 *types.Block, block2 *types.Block, limit uint64) (*types.Block, bool) {
 	height1 := block1.Header.Height
 	height2 := block2.Header.Height
+
+	if limit > height1 || limit > height2 {
+		return nil, false
+	}
 
 	for height1 > height2 {
 		block1 = bc.GetBlock(block1.Header.ParentFullHash)
@@ -224,8 +235,8 @@ func (bc *BlockChain) findCommonPreFix(block1 *types.Block, block2 *types.Block)
 	}
 
 	for block1.FullHash() != block2.FullHash() {
-		if height1 == 0 {
-			return bc.genesisBlock
+		if height1 == limit {
+			return nil, false
 		}
 
 		block1 = bc.GetBlock(block1.Header.ParentFullHash)
@@ -234,5 +245,5 @@ func (bc *BlockChain) findCommonPreFix(block1 *types.Block, block2 *types.Block)
 		height2--
 	}
 
-	return block1
+	return block1, true
 }

@@ -6,11 +6,12 @@ package difficulty
 
 import (
 	"encoding/json"
-	"github.com/fractal-platform/fractal/common/math"
 	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/fractal-platform/fractal/common/math"
 )
 
 type diffTest struct {

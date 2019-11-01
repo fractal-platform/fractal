@@ -3,12 +3,13 @@ package utils
 
 import (
 	"fmt"
-	"github.com/fractal-platform/fractal/params"
-	"gopkg.in/urfave/cli.v1"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/fractal-platform/fractal/params"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var (

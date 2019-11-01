@@ -62,6 +62,56 @@ func WriteGenesisBlockHash(db DatabaseWriter, hash common.Hash) {
 	}
 }
 
+func ReadLastCheckPoint(db DatabaseReader) *types.CheckPoint {
+	data, _ := db.Get(lastCheckPointKey)
+	if len(data) == 0 {
+		return nil
+	}
+	var checkPoint types.CheckPoint
+	err := rlp.DecodeBytes(data, &checkPoint)
+	if err != nil {
+		log.Error("Invalid last check point RLP", "err", err)
+		return nil
+	}
+	return &checkPoint
+}
+
+func WriteLastCheckPoint(db DatabaseWriter, checkPoint *types.CheckPoint) {
+	checkPointBytes, err := rlp.EncodeToBytes(checkPoint)
+	if err != nil {
+		log.Error("Failed to encode last check point", "err", err)
+		return
+	}
+	if err := db.Put(lastCheckPointKey, checkPointBytes); err != nil {
+		log.Crit("Failed to store last check point", "err", err)
+	}
+}
+
+func ReadCheckPointByIndex(db DatabaseReader, index uint64) *types.CheckPoint {
+	data, _ := db.Get(checkPointKey(index))
+	if len(data) == 0 {
+		return nil
+	}
+	var checkPoint types.CheckPoint
+	err := rlp.DecodeBytes(data, &checkPoint)
+	if err != nil {
+		log.Error("Invalid check point RLP", "index", index, "err", err)
+		return nil
+	}
+	return &checkPoint
+}
+
+func WriteCheckPointByIndex(db DatabaseWriter, index uint64, checkPoint *types.CheckPoint) {
+	checkPointBytes, err := rlp.EncodeToBytes(checkPoint)
+	if err != nil {
+		log.Error("Failed to encode check point", "index", index, "err", err)
+		return
+	}
+	if err := db.Put(checkPointKey(index), checkPointBytes); err != nil {
+		log.Crit("Failed to store last check point", "index", index, "err", err)
+	}
+}
+
 // ReadBlockHeaderRLP retrieves a block header in its raw RLP database encoding.
 func ReadBlockHeaderRLP(db DatabaseReader, hash common.Hash) rlp.RawValue {
 	data, _ := db.Get(blockHeaderKey(hash))
@@ -157,6 +207,12 @@ func WriteBlock(db DatabaseWriter, block *types.Block) {
 	if err := db.Put(blockReceivePathKey(hash), []byte{byte(block.ReceivedPath)}); err != nil {
 		log.Crit("Failed to store block received path", "err", err)
 	}
+
+	// Write accHash
+	if block.AccHash != (common.Hash{}) {
+		WriteAccHash(db, hash, block.AccHash)
+	}
+
 }
 
 // DeleteBlock removes all block data associated with a hash.
@@ -535,6 +591,31 @@ func DeleteBloomBits(db DatabaseDeleter, bit uint, section uint64) error {
 	return db.Delete(bloomBitsKey(bit, section))
 }
 
+// ReadAccHash retrieves the hash of given block.
+func ReadAccHash(db DatabaseReader, blockHash common.Hash) common.Hash {
+	data, _ := db.Get(accHashKey(blockHash))
+	if len(data) == 0 {
+		return common.Hash{}
+	}
+
+	var hash = common.Hash{}
+	err := rlp.DecodeBytes(data, &hash)
+	if err != nil {
+		log.Error("DecodeBytes error: " + err.Error())
+	}
+	log.Debug("ReadAccHash: db get data", "hash", hash)
+	return hash
+}
+
+// WriteAccHash stores the given block's accHash
+func WriteAccHash(db DatabaseWriter, blockHash common.Hash, accHash common.Hash) {
+	log.Debug("WriteAccHash", "blockHash", blockHash, "accHash", accHash)
+	hashBytes, _ := rlp.EncodeToBytes(accHash)
+	if err := db.Put(accHashKey(blockHash), hashBytes); err != nil {
+		log.Crit("Failed to store given block's hash", "err", err)
+	}
+}
+
 func ReadHeightBlockMap(db DatabaseReader, height uint64) (common.Hash, error) {
 	data, err := db.Get(heightBlockMapKey(height))
 	return common.BytesToHash(data), err
@@ -595,21 +676,18 @@ func WriteMainBranchHeadHeightAndHash(db DatabaseWriter, height uint64, hash com
 
 func ReadBloomSectionSavedFlag(db DatabaseReader, section uint64) bool {
 	var result = false
-	exist, _ := db.Has(bloomSectionSavedFlagKey(section))
-	if exist {
-		data, _ := db.Get(bloomSectionSavedFlagKey(section))
-		if len(data) != 0 {
-			err := rlp.DecodeBytes(data, &result)
-			if err != nil {
-				log.Error("ReadBloomSectionSavedFlag: DecodeBytes error: " + err.Error())
-			}
+	data, dbErr := db.Get(bloomSectionSavedFlagKey(section))
+	if dbErr == nil && len(data) != 0 {
+		err := rlp.DecodeBytes(data, &result)
+		if err != nil {
+			log.Error("ReadBloomSectionSavedFlag: DecodeBytes error: " + err.Error())
 		}
 	}
 	return result
 }
 
 func WriteBloomSectionSavedFlag(db DatabaseWriter, section uint64, flag bool) {
-	log.Info("BlOOMDEBUG WriteBloomSectionSavedFlag", "section", section, "flag", flag)
+	log.Info("WriteBloomSectionSavedFlag", "section", section, "flag", flag)
 	hashBytes, _ := rlp.EncodeToBytes(flag)
 	if err := db.Put(bloomSectionSavedFlagKey(section), hashBytes); err != nil {
 		log.Crit("Failed to store block state check flag", "err", err)

@@ -7,6 +7,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+
 	"github.com/fractal-platform/fractal/core/dbaccessor"
 	"github.com/fractal-platform/fractal/dbwrapper"
 	"github.com/fractal-platform/fractal/utils/log"

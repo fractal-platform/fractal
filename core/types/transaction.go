@@ -9,6 +9,7 @@ import (
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/common/math"
+	"github.com/fractal-platform/fractal/params"
 	"github.com/fractal-platform/fractal/rlp"
 )
 
@@ -153,7 +154,7 @@ func (tx *Transaction) Hash() common.Hash {
 	if hash := tx.hash.Load(); hash != nil {
 		return hash.(common.Hash)
 	}
-	v := rlpHash(tx)
+	v := common.RlpHash(tx)
 	tx.hash.Store(v)
 	return v
 }
@@ -163,7 +164,7 @@ func (tx *Transaction) PackingHash(signer Signer) common.Hash {
 		return packingHash.(common.Hash)
 	}
 	from, _ := Sender(signer, tx) // has checked, ignore error
-	v := rlpHash([]interface{}{
+	v := common.RlpHash([]interface{}{
 		from,
 		tx.data.AccountNonce,
 	})
@@ -231,9 +232,13 @@ func (tx *Transaction) WithSignature(signer Signer, sig []byte) (*Transaction, e
 	return cpy, nil
 }
 
-// Cost returns amount + gasprice * gaslimit.
+func GasFee(gas uint64, gasPrice *big.Int) *big.Int {
+	return new(big.Int).Quo(new(big.Int).Mul(new(big.Int).SetUint64(gas), gasPrice), params.TransactionFeeCoefficient)
+}
+
+// Cost returns amount + gasprice * gaslimit / 10.
 func (tx *Transaction) Cost() *big.Int {
-	total := new(big.Int).Mul(tx.data.Price, new(big.Int).SetUint64(tx.data.GasLimit))
+	total := GasFee(tx.data.GasLimit, tx.data.Price)
 	total.Add(total, tx.data.Amount)
 	return total
 }

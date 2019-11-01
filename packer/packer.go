@@ -14,9 +14,5 @@ type Packer interface {
 	StartPacking(packerIndex uint32)
 	StopPacking()
 	IsPacking() bool
-	Subscribe(ch chan<- NewPackageEvent) event.Subscription
-}
-
-type NewPackageEvent struct {
-	Pkgs []*types.TxPackage
+	Subscribe(ch chan<- types.TxPackages) event.Subscription
 }

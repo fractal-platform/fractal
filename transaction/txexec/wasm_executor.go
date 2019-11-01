@@ -6,16 +6,21 @@ package txexec
 #include <stdio.h>
 #include <stdlib.h>
 
-void c_db_store(unsigned long long callbackParamKey, char *addr, unsigned long long table, char *key, int keyLength, char *value, int valueLength);
-int c_db_load(unsigned long long callbackParamKey, char *addr, unsigned long long table, char *key, int keyLength, char *value, int valueLength);
-int c_db_has_key(unsigned long long callbackParamKey, char *addr, unsigned long long table, char *key, int keyLength);
-void c_db_remove_key(unsigned long long callbackParamKey, char *addr, unsigned long long table, char *key, int keyLength);
-int c_db_has_table(unsigned long long callbackParamKey, char *addr, unsigned long long table);
-void c_db_remove_table(unsigned long long callbackParamKey, char *addr, unsigned long long table);
+void c_db_store(unsigned long long callbackParamKey, unsigned long long table, char *key, int keyLength, char *value, int valueLength);
+int c_db_load(unsigned long long callbackParamKey, unsigned long long table, char *key, int keyLength, char *value, int valueLength);
+int c_db_has_key(unsigned long long callbackParamKey, unsigned long long table, char *key, int keyLength);
+void c_db_remove_key(unsigned long long callbackParamKey, unsigned long long table, char *key, int keyLength);
+int c_db_has_table(unsigned long long callbackParamKey, unsigned long long table);
+void c_db_remove_table(unsigned long long callbackParamKey, unsigned long long table);
 unsigned long long c_chain_current_time(unsigned long long callbackParamKey);
 unsigned long long c_chain_current_height(unsigned long long callbackParamKey);
-void c_add_log(unsigned long long callbackParamKey, char *addr, char *data, int topicNum);
-int c_transfer(unsigned long long callbackParamKey, char *from, char *to, unsigned long long amount, unsigned long long *remainedGas);
+void c_chain_current_hash(unsigned long long callbackParamKey, char *simpleHash);
+void c_add_log(unsigned long long callbackParamKey, char *topic, int topicNum, char *data, int dataLength);
+int c_transfer(unsigned long long callbackParamKey, char *to, unsigned long long amount);
+int c_call_action(unsigned long long callbackParamKey, char *to, char *actionBytes, int actionLength, unsigned long long amount, int storageDelegate, int userDelegate);
+int c_call_result(unsigned long long callbackParamKey, char *value, int valueLength);
+int c_set_result(unsigned long long callbackParamKey, char *value, int valueLength);
+unsigned char c_call_depth(unsigned long long callbackParamKey);
 
 typedef struct {
 	void *cb_store;
@@ -26,17 +31,21 @@ typedef struct {
 	void *cb_remove_table;
 	void *cb_current_time;
 	void *cb_current_height;
+	void *cb_current_hash;
 	void *cb_add_log;
 	void *c_transfer;
+	void *c_call_action;
+	void *c_call_result;
+	void *c_set_result;
 } Callbacks;
 
-int execute(unsigned char *codeBytes, int codeLength, unsigned char *actionBytes, int actionLength, unsigned char *fromAddrBytes, unsigned char *toAddrBytes, unsigned char *owner, unsigned long long amount, unsigned long long *remainedGas, unsigned long long callbackParamKey, Callbacks *callbacks);
+int execute(unsigned char *codeBytes, int codeLength, unsigned char *actionBytes, int actionLength, unsigned char *fromAddrBytes, unsigned char *toAddrBytes, unsigned char *owner, unsigned char *user, unsigned long long amount, unsigned long long *remainedGas, unsigned long long callbackParamKey, Callbacks *callbacks);
 
-static inline int execute_go(unsigned char *codeBytes, int codeLength, unsigned char *actionBytes, int actionLength, unsigned char *fromAddrBytes, unsigned char *toAddrBytes, unsigned char *owner, unsigned long long amount, unsigned long long *remainedGas, unsigned long long callbackParamKey) {
+static inline int execute_go(unsigned char *codeBytes, int codeLength, unsigned char *actionBytes, int actionLength, unsigned char *fromAddrBytes, unsigned char *toAddrBytes, unsigned char *owner, unsigned char *user, unsigned long long amount, unsigned long long *remainedGas, unsigned long long callbackParamKey) {
 	Callbacks callbacks= {	c_db_store, c_db_load, c_db_has_key, c_db_remove_key,
-							c_db_has_table, c_db_remove_table, c_chain_current_time, c_chain_current_height,
-							c_add_log, c_transfer };
-	return execute(codeBytes, codeLength, actionBytes, actionLength, fromAddrBytes, toAddrBytes, owner, amount, remainedGas, callbackParamKey, &callbacks);
+							c_db_has_table, c_db_remove_table, c_chain_current_time, c_chain_current_height, c_chain_current_hash,
+							c_add_log, c_transfer, c_call_action, c_call_result, c_set_result };
+	return execute(codeBytes, codeLength, actionBytes, actionLength, fromAddrBytes, toAddrBytes, owner, user, amount, remainedGas, callbackParamKey, &callbacks);
 }
 */
 import "C"
@@ -52,6 +61,8 @@ import (
 	"github.com/fractal-platform/fractal/crypto"
 	"github.com/fractal-platform/fractal/utils/log"
 )
+
+const MaxWasmCallDepth = 8
 
 type WasmExecutor struct {
 	signer       types.Signer
@@ -234,12 +245,33 @@ func WasmApplyMessage(prevStateDb *state.StateDB, statedb *state.StateDB, msg Me
 	return NewStateTransition(prevStateDb, statedb, msg, gp, nonceSet, maxBitLength, callbackParamKey).WasmTransitionDb(coinbase)
 }
 
-func CallWasmContract(codePointer unsafe.Pointer, codeLength int, actionPointer unsafe.Pointer, actionLength int, fromAddrPointer unsafe.Pointer, toAddrPointer unsafe.Pointer, ownerPointer unsafe.Pointer, amount uint64, remainedGas *uint64, callbackParamKey uint64) int {
+func CallWasmContract(code []byte, action []byte, from common.Address, to common.Address, user common.Address, owner common.Address, amount uint64, storageDelegate bool, userDelegate bool, remainedGas *uint64, callbackParamKey uint64) int {
+	codePointer := unsafe.Pointer(&code[0])
+	codeLength := len(code)
+	actionPointer := unsafe.Pointer(&action[0])
+	actionLength := len(action)
+	fromAddrPointer := unsafe.Pointer(&from[0])
+	toAddrPointer := unsafe.Pointer(&to[0])
+	userAddrPointer := unsafe.Pointer(&user[0])
+	ownerPointer := unsafe.Pointer(&owner[0])
+
+	// prepare
+	wasm.GetGlobalRegisterParam().SetRemainedGas(callbackParamKey, remainedGas)
+	wasm.GetGlobalRegisterParam().AddCallstack(callbackParamKey, from, to, user, action, storageDelegate, userDelegate)
+
+	// check depth
+	depth := wasm.GetGlobalRegisterParam().GetCurrentDepth(callbackParamKey)
+	if depth >= MaxWasmCallDepth {
+		wasm.GetGlobalRegisterParam().FulfillCallstack(callbackParamKey, wasm.WasmErrorDepthExceed, "wasm call depth exceed", 0)
+		return wasm.WasmErrorDepthExceed
+	}
+
 	preGas := *remainedGas
-	ret := int(C.execute_go((*C.uchar)(codePointer), C.int(codeLength), (*C.uchar)(actionPointer), C.int(actionLength), (*C.uchar)(fromAddrPointer), (*C.uchar)(toAddrPointer), (*C.uchar)(ownerPointer),
-		(C.ulonglong)(amount), (*C.ulonglong)(remainedGas), C.ulonglong(callbackParamKey)))
+	ret := int(C.execute_go((*C.uchar)(codePointer), C.int(codeLength), (*C.uchar)(actionPointer), C.int(actionLength), (*C.uchar)(fromAddrPointer), (*C.uchar)(toAddrPointer), (*C.uchar)(ownerPointer), (*C.uchar)(userAddrPointer), (C.ulonglong)(amount), (*C.ulonglong)(remainedGas), C.ulonglong(callbackParamKey)))
 	postGas := *remainedGas
-	log.Info("call gas", "gas", preGas-postGas)
+	gas := preGas - postGas
+	wasm.GetGlobalRegisterParam().FulfillCallstack(callbackParamKey, ret, "", gas)
+	log.Info("Call wasm contract finish", "depth", depth, "gas", gas, "ret", ret)
 	return ret
 }
 
@@ -264,13 +296,7 @@ func Pointer2Slice(pointer unsafe.Pointer, length int) ([]byte, error) {
 }
 
 //export c_db_store
-func c_db_store(callbackParamKey C.ulonglong, addr *C.char, table C.ulonglong, key *C.char, keyLength C.int, value *C.char, valueLength C.int) {
-	addrSlice, err := Pointer2Address(unsafe.Pointer(addr))
-	if err != nil {
-		log.Error("c_db_store convert address failed", "err", err.Error())
-		return
-	}
-
+func c_db_store(callbackParamKey C.ulonglong, table C.ulonglong, key *C.char, keyLength C.int, value *C.char, valueLength C.int) {
 	keySlice, err := Pointer2Slice(unsafe.Pointer(key), int(keyLength))
 	if err != nil {
 		log.Error("c_db_store convert key failed", "err", err.Error())
@@ -283,24 +309,20 @@ func c_db_store(callbackParamKey C.ulonglong, addr *C.char, table C.ulonglong, k
 		return
 	}
 
-	wasm.DbStore(uint64(callbackParamKey), addrSlice, uint64(table), keySlice, valueSlice)
+	storage := wasm.GetGlobalRegisterParam().GetCurrentStorage(uint64(callbackParamKey))
+	wasm.DbStore(uint64(callbackParamKey), storage, uint64(table), keySlice, valueSlice)
 }
 
 //export c_db_load
-func c_db_load(callbackParamKey C.ulonglong, addr *C.char, table C.ulonglong, key *C.char, keyLength C.int, value *C.char, valueLength C.int) C.int {
-	addrSlice, err := Pointer2Address(unsafe.Pointer(addr))
-	if err != nil {
-		log.Error("c_db_load convert address failed", "err", err.Error())
-		return -1
-	}
-
+func c_db_load(callbackParamKey C.ulonglong, table C.ulonglong, key *C.char, keyLength C.int, value *C.char, valueLength C.int) C.int {
 	keySlice, err := Pointer2Slice(unsafe.Pointer(key), int(keyLength))
 	if err != nil {
 		log.Error("c_db_load convert key failed", "err", err.Error())
 		return -1
 	}
 
-	valueSlice := wasm.DbLoad(uint64(callbackParamKey), addrSlice, uint64(table), keySlice)
+	storage := wasm.GetGlobalRegisterParam().GetCurrentStorage(uint64(callbackParamKey))
+	valueSlice := wasm.DbLoad(uint64(callbackParamKey), storage, uint64(table), keySlice)
 	if value != nil && valueLength > 0 {
 		targetSlice := (*[1 << 28]C.char)(unsafe.Pointer(value))[:int(valueLength):int(valueLength)]
 		for i := 0; i < int(valueLength) && i < len(valueSlice); i++ {
@@ -311,59 +333,39 @@ func c_db_load(callbackParamKey C.ulonglong, addr *C.char, table C.ulonglong, ke
 }
 
 //export c_db_has_key
-func c_db_has_key(callbackParamKey C.ulonglong, addr *C.char, table C.ulonglong, key *C.char, keyLength C.int) C.int {
-	addrSlice, err := Pointer2Address(unsafe.Pointer(addr))
-	if err != nil {
-		log.Error("c_db_has_key convert address failed", "err", err.Error())
-		return -1
-	}
-
+func c_db_has_key(callbackParamKey C.ulonglong, table C.ulonglong, key *C.char, keyLength C.int) C.int {
 	keySlice, err := Pointer2Slice(unsafe.Pointer(key), int(keyLength))
 	if err != nil {
 		log.Error("c_db_has_key convert key failed", "err", err.Error())
 		return -1
 	}
 
-	return C.int(wasm.DbHasKey(uint64(callbackParamKey), addrSlice, uint64(table), keySlice))
+	storage := wasm.GetGlobalRegisterParam().GetCurrentStorage(uint64(callbackParamKey))
+	return C.int(wasm.DbHasKey(uint64(callbackParamKey), storage, uint64(table), keySlice))
 }
 
 //export c_db_remove_key
-func c_db_remove_key(callbackParamKey C.ulonglong, addr *C.char, table C.ulonglong, key *C.char, keyLength C.int) {
-	addrSlice, err := Pointer2Address(unsafe.Pointer(addr))
-	if err != nil {
-		log.Error("c_db_remove_key convert address failed", "err", err.Error())
-		return
-	}
-
+func c_db_remove_key(callbackParamKey C.ulonglong, table C.ulonglong, key *C.char, keyLength C.int) {
 	keySlice, err := Pointer2Slice(unsafe.Pointer(key), int(keyLength))
 	if err != nil {
 		log.Error("c_db_remove_key convert key failed", "err", err.Error())
 		return
 	}
 
-	wasm.DbRemoveKey(uint64(callbackParamKey), addrSlice, uint64(table), keySlice)
+	storage := wasm.GetGlobalRegisterParam().GetCurrentStorage(uint64(callbackParamKey))
+	wasm.DbRemoveKey(uint64(callbackParamKey), storage, uint64(table), keySlice)
 }
 
 //export c_db_has_table
-func c_db_has_table(callbackParamKey C.ulonglong, addr *C.char, table C.ulonglong) C.int {
-	addrSlice, err := Pointer2Address(unsafe.Pointer(addr))
-	if err != nil {
-		log.Error("c_db_has_table convert address failed", "err", err.Error())
-		return -1
-	}
-
-	return C.int(wasm.DbHasTable(uint64(callbackParamKey), addrSlice, uint64(table)))
+func c_db_has_table(callbackParamKey C.ulonglong, table C.ulonglong) C.int {
+	storage := wasm.GetGlobalRegisterParam().GetCurrentStorage(uint64(callbackParamKey))
+	return C.int(wasm.DbHasTable(uint64(callbackParamKey), storage, uint64(table)))
 }
 
 //export c_db_remove_table
-func c_db_remove_table(callbackParamKey C.ulonglong, addr *C.char, table C.ulonglong) {
-	addrSlice, err := Pointer2Address(unsafe.Pointer(addr))
-	if err != nil {
-		log.Error("c_db_has_table convert address failed", "err", err.Error())
-		return
-	}
-
-	wasm.DbRemoveTable(uint64(callbackParamKey), addrSlice, uint64(table))
+func c_db_remove_table(callbackParamKey C.ulonglong, table C.ulonglong) {
+	storage := wasm.GetGlobalRegisterParam().GetCurrentStorage(uint64(callbackParamKey))
+	wasm.DbRemoveTable(uint64(callbackParamKey), storage, uint64(table))
 }
 
 //export c_chain_current_time
@@ -376,36 +378,108 @@ func c_chain_current_height(callbackParamKey C.ulonglong) C.ulonglong {
 	return C.ulonglong(wasm.GetBlockHeight(uint64(callbackParamKey)))
 }
 
+//export c_chain_current_hash
+func c_chain_current_hash(callbackParamKey C.ulonglong, simpleHash *C.char) {
+	sh := wasm.GetBlockHash(uint64(callbackParamKey))
+	simpleHashSlice := (*[1 << 28]C.char)(unsafe.Pointer(simpleHash))[:common.HashLength:common.HashLength]
+	for i := 0; i < common.HashLength; i++ {
+		simpleHashSlice[i] = C.char(sh[i])
+	}
+}
+
 //export c_add_log
-func c_add_log(callbackParamKey C.ulonglong, addr *C.char, data *C.char, topicNum C.int) {
-	addrSlice, err := Pointer2Address(unsafe.Pointer(addr))
+func c_add_log(callbackParamKey C.ulonglong, topic *C.char, topicNum C.int, data *C.char, dataLength C.int) {
+	topicSlice, err := Pointer2Slice(unsafe.Pointer(topic), int(topicNum)*common.HashLength)
 	if err != nil {
-		log.Error("c_add_log convert address failed", "err", err.Error())
+		log.Error("c_add_log convert topic failed", "err", err.Error())
 		return
 	}
 
-	topicSlice, err := Pointer2Slice(unsafe.Pointer(data), int(topicNum)*common.HashLength)
+	dataSlice, err := Pointer2Slice(unsafe.Pointer(data), int(dataLength))
 	if err != nil {
 		log.Error("c_add_log convert data failed", "err", err.Error())
 		return
 	}
 
-	wasm.AddLog(uint64(callbackParamKey), addrSlice, topicSlice, int(topicNum))
+	storage := wasm.GetGlobalRegisterParam().GetCurrentStorage(uint64(callbackParamKey))
+	wasm.AddLog(uint64(callbackParamKey), storage, topicSlice, int(topicNum), dataSlice, int(dataLength))
 }
 
 //export c_transfer
-func c_transfer(callbackParamKey C.ulonglong, from *C.char, to *C.char, amount C.ulonglong, remainedGas *C.ulonglong) C.int {
-	fromAddr, err := Pointer2Address(unsafe.Pointer(from))
-	if err != nil {
-		log.Error("c_transfer convert from address failed", "err", err.Error())
-		return -1
-	}
-
+func c_transfer(callbackParamKey C.ulonglong, to *C.char, amount C.ulonglong) C.int {
 	toAddr, err := Pointer2Address(unsafe.Pointer(to))
 	if err != nil {
 		log.Error("c_transfer convert to address failed", "err", err.Error())
 		return -1
 	}
 
-	return C.int(wasm.Transfer(uint64(callbackParamKey), fromAddr, toAddr, uint64(amount), (*uint64)(remainedGas)))
+	fromAddr := wasm.GetGlobalRegisterParam().GetCurrentContract(uint64(callbackParamKey))
+	remainedGas := wasm.GetGlobalRegisterParam().GetRemainedGas(uint64(callbackParamKey))
+	return C.int(wasm.Transfer(uint64(callbackParamKey), fromAddr, toAddr, uint64(amount), remainedGas))
+}
+
+//export c_call_action
+func c_call_action(callbackParamKey C.ulonglong, contract *C.char, actionBytes *C.char, actionLength C.int, amount C.ulonglong, storageDelegate C.int, userDelegate C.int) C.int {
+	contractAddr, err := Pointer2Address(unsafe.Pointer(contract))
+	if err != nil {
+		log.Error("c_call_action convert contract address failed", "err", err.Error())
+		return -1
+	}
+
+	actionSlice, err := Pointer2Slice(unsafe.Pointer(actionBytes), int(actionLength))
+	if err != nil {
+		log.Error("c_call_action convert action failed", "err", err.Error())
+		return -1
+	}
+
+	storageDelegate_ := true
+	if int(storageDelegate) == 0 {
+		storageDelegate_ = false
+	}
+	userDelegate_ := true
+	if int(userDelegate) == 0 {
+		userDelegate_ = false
+	}
+
+	code := wasm.GetGlobalRegisterParam().GetContractCode(uint64(callbackParamKey), contractAddr)
+	if code == nil {
+		log.Error("c_call_action call contract failed: contract code is nil")
+	}
+	owner := wasm.GetGlobalRegisterParam().GetContractOwner(uint64(callbackParamKey), contractAddr)
+	from := wasm.GetGlobalRegisterParam().GetCurrentContract(uint64(callbackParamKey))
+	user := wasm.GetGlobalRegisterParam().GetCurrentUser(uint64(callbackParamKey))
+	remainedGas := wasm.GetGlobalRegisterParam().GetRemainedGas(uint64(callbackParamKey))
+	ret := CallWasmContract(code, actionSlice, from, contractAddr, owner, user, uint64(amount), storageDelegate_, userDelegate_, remainedGas, uint64(callbackParamKey))
+	return C.int(ret)
+}
+
+//export c_call_result
+func c_call_result(callbackParamKey C.ulonglong, result *C.char, length C.int) C.int {
+	resultSlice := wasm.GetGlobalRegisterParam().GetCallResult(uint64(callbackParamKey))
+	if result != nil && length > 0 {
+		targetSlice := (*[1 << 28]C.char)(unsafe.Pointer(result))[:int(length):int(length)]
+		for i := 0; i < int(length) && i < len(resultSlice); i++ {
+			targetSlice[i] = C.char(resultSlice[i])
+		}
+	}
+	return C.int(len(resultSlice))
+}
+
+//export c_set_result
+func c_set_result(callbackParamKey C.ulonglong, result *C.char, length C.int) C.int {
+	log.Info("c_set_result", "length", length)
+	resultSlice, err := Pointer2Slice(unsafe.Pointer(result), int(length))
+	if err != nil {
+		log.Error("c_set_result convert result failed", "err", err.Error())
+		return -1
+	}
+
+	wasm.GetGlobalRegisterParam().SetCallResult(uint64(callbackParamKey), resultSlice)
+	return C.int(len(resultSlice))
+}
+
+//export c_call_depth
+func c_call_depth(callbackParamKey C.ulonglong) C.uchar {
+	depth := wasm.GetGlobalRegisterParam().GetCurrentDepth(uint64(callbackParamKey))
+	return C.uchar(depth)
 }
