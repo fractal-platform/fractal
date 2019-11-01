@@ -1,4 +1,8 @@
-#!/bin/sh
+#!/bin/bash
+set -ex
+
+# will be replaced by travis
+VERSION=__VERSION__
 
 # prepare folder
 mkdir -p ~/fractal-test
@@ -6,7 +10,7 @@ cd ~/fractal-test
 
 function download() {
 	filename=$1
-	fileurl="https://github.com/fractal-platform/fractal/releases/download/v0.2.0/$filename"
+	fileurl="https://github.com/fractal-platform/fractal/releases/download/$VERSION/$filename"
 
     printf "Downloading package from $fileurl\\n"
 
@@ -24,7 +28,7 @@ function download() {
 unamestr=`uname`
 if [[ "${unamestr}" == 'Darwin' ]]; then
     echo "installing fractal apps in MacOS"
-    filename=fractal-bin.macos.v0.2.0.tgz
+    filename=fractal-bin.$VERSION.macos.tgz
     download $filename
     sudo mkdir -p /usr/local/bin
     sudo mkdir -p /usr/local/lib
@@ -39,7 +43,7 @@ else
    case "$OS_NAME" in
       "Amazon Linux")
          echo "installing fractal apps in Amazon Linux AMI"
-         filename=fractal-bin.ami2.v0.2.0.tgz
+         filename=fractal-bin.$VERSION.ami2.tgz
          download $filename
          sudo cp fractal-bin/gftl /usr/local/bin/
          sudo cp fractal-bin/gtool /usr/local/bin/
@@ -47,7 +51,7 @@ else
          ;;
       "CentOS Linux")
          echo "installing fractal apps in CentOS Linux"
-         filename=fractal-bin.centos.v0.2.0.tgz
+         filename=fractal-bin.$VERSION.centos.tgz
          download $filename
          sudo cp fractal-bin/gftl /usr/local/bin/
          sudo cp fractal-bin/gtool /usr/local/bin/
@@ -55,7 +59,7 @@ else
          ;;
       "Ubuntu")
          echo "installing fractal apps in Ubuntu Linux"
-         filename=fractal-bin.ubuntu.v0.2.0.tgz
+         filename=fractal-bin.$VERSION.ubuntu.tgz
          download $filename
          sudo cp fractal-bin/gftl /usr/local/bin/
          sudo cp fractal-bin/gtool /usr/local/bin/

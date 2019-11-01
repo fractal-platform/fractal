@@ -39,6 +39,7 @@ deploy:
   api_key: "${travis_ci_apikey}"
   file:
     - "scripts/install.sh"
+    - "scripts/install_in_docker.sh"
     - "release/${PKG_FILE}"
   skip_cleanup: true
   overwrite: true
