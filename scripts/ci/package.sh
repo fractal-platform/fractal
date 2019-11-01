@@ -11,6 +11,7 @@ if [[ "$ENV_OS" == "ubuntu" ]]; then
     cp transaction/txexec/libwasmlib.so.ubuntu release/fractal-bin/libwasmlib.so
 elif [[ "$ENV_OS" == "osx" ]]; then
     cp transaction/txexec/libwasmlib.dylib release/fractal-bin/libwasmlib.dylib
+    cp transaction/txexec/libgmp.10.dylib release/fractal-bin/libgmp.10.dylib
 fi
 
 cd release
