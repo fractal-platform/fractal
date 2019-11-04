@@ -326,6 +326,40 @@ func (self *StateDB) InTransferBlackList(addr common.Address) bool {
 	return stateObject.HasKey(self.db, storageKey) == 1
 }
 
+func (self *StateDB) GetTransferWhiteList() []common.Address {
+	stateObject := self.getStateObject(common.HexToAddress(params.TransferRestrictionContractAddr))
+	if stateObject == nil || stateObject.deleted {
+		log.Error("InTransferBlackList Can't find system contract", "contractAddr", params.TransferRestrictionContractAddr)
+		return nil
+	}
+	table, _ := utils.String2Uint64(params.TransferWhiteListTable)
+	storageKeys := stateObject.GetKeysInTable(self.db, table)
+	var whiteList []common.Address
+	for i := range storageKeys {
+		var addr common.Address
+		copy(addr[:], storageKeys[i].Bytes[8:storageKeys[i].Length])
+		whiteList = append(whiteList, addr)
+	}
+	return whiteList
+}
+
+func (self *StateDB) GetTransferBlackList() []common.Address {
+	stateObject := self.getStateObject(common.HexToAddress(params.TransferRestrictionContractAddr))
+	if stateObject == nil || stateObject.deleted {
+		log.Error("InTransferBlackList Can't find system contract", "contractAddr", params.TransferRestrictionContractAddr)
+		return nil
+	}
+	table, _ := utils.String2Uint64(params.TransferBlackListTable)
+	storageKeys := stateObject.GetKeysInTable(self.db, table)
+	var blackList []common.Address
+	for i := range storageKeys {
+		var addr common.Address
+		copy(addr[:], storageKeys[i].Bytes[8:storageKeys[i].Length])
+		blackList = append(blackList, addr)
+	}
+	return blackList
+}
+
 // Database retrieves the low level database supporting the lower level trie ops.
 func (self *StateDB) Database() Database {
 	return self.db

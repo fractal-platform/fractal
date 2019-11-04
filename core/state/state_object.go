@@ -323,6 +323,19 @@ func (self *stateObject) HasTable(db Database, table uint64) int {
 	return 0
 }
 
+func (self *stateObject) GetKeysInTable(db Database, table uint64) []StorageKey {
+	var keys []StorageKey
+	tr := self.getTrie(db)
+	it := trie.NewIterator(tr.NodeIterator(nil))
+	for it.Next() {
+		key := tr.GetKey(it.Key)
+		if binary.BigEndian.Uint64(key[0:8]) == table {
+			keys = append(keys, LoadStorageKey(key))
+		}
+	}
+	return keys
+}
+
 func (self *stateObject) RemoveKey(db Database, storageKey StorageKey) {
 	self.SetState(db, storageKey, nil)
 }

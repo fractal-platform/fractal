@@ -148,11 +148,6 @@ func (st *StateTransition) buyGas() error {
 }
 
 func (st *StateTransition) preCheck() error {
-	// check transfer black list
-	if !st.transferIsAllowed() {
-		return ErrTransferIsNotAllowed
-	}
-
 	data := reflect.ValueOf(st.prevStateDb)
 	if !data.IsNil() {
 		newStartNonce := st.prevStateDb.GetNonce(st.msg.From())
@@ -282,7 +277,7 @@ func (st *StateTransition) WasmTransitionDb(coinbase common.Address) (ret []byte
 		if err != nil {
 			return nil, 0, false, err
 		}
-	} else {
+	} else if st.transferIsAllowed() {
 		err = st.callWasm()
 	}
 
@@ -317,6 +312,7 @@ func (st *StateTransition) callWasm() error {
 		owner := st.state.GetContractOwner(to)
 		value := st.value.Uint64()
 		result := CallWasmContract(unsafe.Pointer(&code[0]), len(code), unsafe.Pointer(&st.data[0]), len(st.data), unsafe.Pointer(&from[0]), unsafe.Pointer(&to[0]), unsafe.Pointer(&owner[0]), value, &st.gas, st.callbackParamKey)
+		log.Info("CallWasmContract params", "from", from, "to", to, "owner", owner, "data", hexutil.Encode(st.data))
 		if result != 0 {
 			log.Error("CallWasmContract returned with error", "result", result)
 			return ErrWasmExec
@@ -335,7 +331,7 @@ func (st *StateTransition) transferIsAllowed() bool {
 	}
 
 	if st.prevStateDb.InTransferBlackList(st.to()) {
-		log.Warn("Transfer is not allowed, To address is in the black list", "from", st.msg.From(), "to", *st.msg.To())
+		log.Warn("Transfer is not allowed, To address is in the black list", "from", st.msg.From(), "to", st.to())
 		return false
 	}
 

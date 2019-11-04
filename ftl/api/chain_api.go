@@ -5,8 +5,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/core/dbaccessor"
@@ -161,4 +163,56 @@ func (s *BlockChainAPI) GetContractOwner(ctx context.Context, contractAddress co
 	}
 
 	return stateDb.GetContractOwner(contractAddress), nil
+}
+
+func (s *BlockChainAPI) GetTransferWhiteList(ctx context.Context, blockHashStr string) (string, error) {
+	block := s.ftl.GetBlockStr(blockHashStr)
+	if block == nil {
+		return "", errors.New("block not found")
+	}
+	stateDb, err := s.ftl.BlockChain().StateAt(block.Header.StateHash)
+	if stateDb == nil || err != nil {
+		return "", err
+	}
+
+	whiteList := stateDb.GetTransferWhiteList()
+
+	if len(whiteList) == 0 {
+		return "", nil
+	}
+	var buffer bytes.Buffer
+	var i int
+	for ; i < len(whiteList)-1; i++ {
+		buffer.WriteString(whiteList[i].String())
+		buffer.WriteString("\n")
+	}
+	buffer.WriteString(whiteList[i].String())
+
+	return buffer.String(), nil
+}
+
+func (s *BlockChainAPI) GetTransferBlackList(ctx context.Context, blockHashStr string) (string, error) {
+	block := s.ftl.GetBlockStr(blockHashStr)
+	if block == nil {
+		return "", errors.New("block not found")
+	}
+	stateDb, err := s.ftl.BlockChain().StateAt(block.Header.StateHash)
+	if stateDb == nil || err != nil {
+		return "", err
+	}
+
+	blackList := stateDb.GetTransferBlackList()
+
+	if len(blackList) == 0 {
+		return "", nil
+	}
+	var buffer bytes.Buffer
+	var i int
+	for ; i < len(blackList)-1; i++ {
+		buffer.WriteString(blackList[i].String())
+		buffer.WriteString("\n")
+	}
+	buffer.WriteString(blackList[i].String())
+
+	return buffer.String(), nil
 }
