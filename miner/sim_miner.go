@@ -72,6 +72,8 @@ func (self *simMiner) Stop() {
 	}
 }
 
+func (self *simMiner) Close() {}
+
 func (self *simMiner) IsMining() bool {
 	return self.isMining
 }
