@@ -74,7 +74,9 @@ func genGenesisState(ctx *cli.Context) error {
 		miningKeyDir := path.Join(path.Join(dir.Name(), "keys"), miningKeySubFolder)
 		if _, err := os.Stat(miningKeyDir); !os.IsNotExist(err) {
 			keyman := keys.NewMiningKeyManager(miningKeyDir, password)
-			keyman.Load()
+			if keyman.Load() != nil {
+				panic("unlock password error")
+			}
 			for addr, v := range keyman.Keys() {
 				for pubkey := range v {
 					miningKeyMap[addr] = pubkey

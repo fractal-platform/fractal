@@ -136,7 +136,9 @@ func listKeys(ctx *cli.Context) error {
 	}
 
 	packerKeyManager := keys.NewPackerKeyManager(path.Join(folder, packerKeySubFolder), password)
-	packerKeyManager.Load()
+	if packerKeyManager.Load() != nil {
+		panic("unlock password error")
+	}
 	for k, v := range packerKeyManager.Keys() {
 		fmt.Printf("Packer Key Address: %s\n", hexutil.Encode(k[:]))
 		for pub := range v {
@@ -163,6 +165,8 @@ func newKeys(ctx *cli.Context) error {
 	// create if not exists
 	if _, err := os.Stat(folder); os.IsNotExist(err) {
 		os.MkdirAll(folder, 0755)
+	} else {
+		return errors.New("key already exist: " + folder)
 	}
 
 	accountKeyFile := path.Join(folder, "account.json")
