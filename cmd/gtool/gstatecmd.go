@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -75,7 +76,7 @@ func genGenesisState(ctx *cli.Context) error {
 		if _, err := os.Stat(miningKeyDir); !os.IsNotExist(err) {
 			keyman := keys.NewMiningKeyManager(miningKeyDir, password)
 			if keyman.Load() != nil {
-				panic("unlock password error")
+				return errors.New("unlock password error")
 			}
 			for addr, v := range keyman.Keys() {
 				for pubkey := range v {
@@ -88,7 +89,7 @@ func genGenesisState(ctx *cli.Context) error {
 		if _, err := os.Stat(packerKeyDir); !os.IsNotExist(err) {
 			keyman := keys.NewPackerKeyManager(packerKeyDir, password)
 			if keyman.Load() != nil {
-				panic("unlock password error")
+				return errors.New("unlock password error")
 			}
 			for addr, v := range keyman.Keys() {
 				for pubkey := range v {

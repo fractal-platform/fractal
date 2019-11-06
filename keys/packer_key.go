@@ -55,9 +55,9 @@ func NewPackerKeyManager(directory string, password string) *PackerKeyManager {
 	}
 }
 
-func (s *PackerKeyManager) Start() {
+func (s *PackerKeyManager) Start() error {
 	if s.Load() != nil {
-		panic("unlock password error")
+		return errors.New("unlock password error")
 	}
 	go func() {
 		timer := time.NewTimer(scanInterval)
@@ -68,13 +68,12 @@ func (s *PackerKeyManager) Start() {
 			case <-s.term:
 				return
 			case <-timer.C:
-				if s.Load() != nil {
-					panic("unlock password error")
-				}
+				s.Load()
 				timer.Reset(scanInterval)
 			}
 		}
 	}()
+	return nil
 }
 
 func (s *PackerKeyManager) Stop() {
