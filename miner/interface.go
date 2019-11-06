@@ -17,6 +17,8 @@ type Miner interface {
 	// Stop terminates the miner loop.
 	Stop()
 
+	Close()
+
 	GetCoinbase() common.Address
 
 	SetCoinbase(coinbase common.Address)

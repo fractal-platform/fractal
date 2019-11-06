@@ -5,6 +5,7 @@
 package rpcserver
 
 import (
+	"context"
 	"fmt"
 	"github.com/fractal-platform/fractal/rpc"
 	"github.com/fractal-platform/fractal/utils/log"
@@ -78,6 +79,10 @@ func (srv *Server) RegisterApis(apis []RpcApi) {
 // ListenAndServe starts the request handler loop
 func (srv *Server) ListenAndServe() {
 	srv.httpServer.ListenAndServe()
+}
+
+func (srv *Server) Shutdown() {
+	srv.httpServer.Shutdown(context.Background())
 }
 
 // reqHandler encapsulate the handler for both rpc & websocket

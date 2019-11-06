@@ -3,13 +3,14 @@ package pksvc
 import (
 	"context"
 	"errors"
-	"github.com/fractal-platform/fractal/common"
-	"github.com/fractal-platform/fractal/core/dbaccessor"
-	"github.com/fractal-platform/fractal/core/pool"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/config"
+	"github.com/fractal-platform/fractal/core/dbaccessor"
+	"github.com/fractal-platform/fractal/core/pool"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/event"
 	"github.com/fractal-platform/fractal/packer"
@@ -155,6 +156,7 @@ type worker struct {
 	timeout  *time.Ticker
 	ctx      context.Context
 	cancel   context.CancelFunc
+	wg       sync.WaitGroup // for shutdown sync
 
 	newPkgEventFeed *event.Feed
 }
@@ -185,6 +187,8 @@ func (w *worker) start(packerIndex uint32) {
 func (w *worker) stop() {
 	if w.cancel != nil {
 		w.cancel()
+		w.wg.Wait()
+		log.Info("worker of packer service is stopped")
 	}
 	if w.timeout != nil {
 		w.timeout.Stop()
@@ -193,6 +197,9 @@ func (w *worker) stop() {
 }
 
 func (w *worker) loop() {
+	w.wg.Add(1)
+	defer w.wg.Done()
+
 	for {
 		select {
 		case <-w.txpool.newTxCh:

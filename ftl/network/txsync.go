@@ -13,6 +13,9 @@ import (
 )
 
 func (pm *ProtocolManager) txBroadcastLoop() {
+	pm.wg.Add(1)
+	defer pm.wg.Done()
+
 	for {
 		select {
 		case event := <-pm.txsCh:
@@ -27,6 +30,9 @@ func (pm *ProtocolManager) txBroadcastLoop() {
 }
 
 func (pm *ProtocolManager) txPackageListenLoop() {
+	pm.wg.Add(1)
+	defer pm.wg.Done()
+
 	for {
 		select {
 		case event := <-pm.txPkgCh:

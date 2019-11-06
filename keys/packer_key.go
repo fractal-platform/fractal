@@ -39,6 +39,7 @@ type PackerKeyManager struct {
 
 	lock sync.RWMutex
 	term chan struct{}
+	wg   sync.WaitGroup // for shutdown sync
 }
 
 func NewPackerKeyManager(directory string, password string) *PackerKeyManager {
@@ -58,6 +59,8 @@ func (s *PackerKeyManager) Start() {
 	s.Load()
 	go func() {
 		timer := time.NewTimer(scanInterval)
+		s.wg.Add(1)
+		defer s.wg.Done()
 		for {
 			select {
 			case <-s.term:
@@ -72,6 +75,7 @@ func (s *PackerKeyManager) Start() {
 
 func (s *PackerKeyManager) Stop() {
 	close(s.term)
+	s.wg.Wait()
 }
 
 func (s *PackerKeyManager) CreateKey(address common.Address) crypto.PublicKey {

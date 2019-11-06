@@ -71,7 +71,8 @@ type worker struct {
 	startCh  chan struct{}
 	exitCh   chan struct{}
 
-	//
+	wg sync.WaitGroup // for shutdown sync
+
 	newMinedBlockFeed *event.Feed
 
 	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
@@ -136,6 +137,7 @@ func (w *worker) isRunning() bool {
 // close terminates all background threads maintained by the worker and cleans up buffered channels.
 // Note the worker does not support being closed multiple times.
 func (w *worker) close() {
+	atomic.StoreInt32(&w.running, 0)
 	close(w.exitCh)
 	// Clean up buffered channels
 	for empty := false; !empty; {
@@ -145,11 +147,15 @@ func (w *worker) close() {
 			empty = true
 		}
 	}
+
+	w.wg.Wait()
+	log.Info("miner is stopped")
 }
 
 // mainLoop is a standalone goroutine to regenerate the sealing task based on the received event.
 func (w *worker) mainLoop() {
-	defer w.chainUpdateSub.Unsubscribe()
+	w.wg.Add(1)
+	defer w.wg.Done()
 
 	for {
 		select {
@@ -158,8 +164,10 @@ func (w *worker) mainLoop() {
 		case <-w.chainUpdateCh:
 			w.commitNewWork()
 		case <-w.exitCh:
+			w.chainUpdateSub.Unsubscribe()
 			return
 		case <-w.chainUpdateSub.Err():
+			w.chainUpdateSub.Unsubscribe()
 			return
 		}
 	}
@@ -277,6 +285,9 @@ func (w *worker) taskLoop() {
 // resultLoop is a standalone goroutine to handle sealing result submitting
 // and flush relative data to the database.
 func (w *worker) resultLoop() {
+	w.wg.Add(1)
+	defer w.wg.Done()
+
 	for {
 		select {
 		case result := <-w.resultCh:

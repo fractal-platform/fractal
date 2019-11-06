@@ -45,7 +45,7 @@ type Fractal struct {
 	// chain object
 	blockchain    *chain.BlockChain
 	bloomRequests chan chan *bloomquery.Retrieval // Channel receiving bloom data retrieval requests
-	
+
 	//
 	txPool  pool.Pool
 	pkgPool pool.Pool
@@ -264,11 +264,18 @@ func (s *Fractal) startAdminRPC() {
 func (s *Fractal) Stop() error {
 	// TODO: Temporarily not open bloom
 	//s.bloomIndexer.Close()
-	s.protocolManager.Stop()
-	s.txPool.Stop()
-	s.miner.Stop()
-	s.packer.StopPacking()
 
+	s.miner.Close()
+	s.protocolManager.Stop()
+	s.packer.StopPacking()
+	s.pkgPool.Stop()
+	s.txPool.Stop()
+
+	s.adminRpcServer.Shutdown()
+	s.rpcServer.Shutdown()
+	s.server.Stop()
+
+	s.blockchain.StopRecord()
 	s.miningKeyManager.Stop()
 	s.packerKeyManager.Stop()
 

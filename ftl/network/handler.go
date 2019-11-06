@@ -7,6 +7,7 @@ package network
 import (
 	"errors"
 	"fmt"
+	"github.com/deckarep/golang-set"
 	"github.com/fractal-platform/fractal/chain"
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/config"
@@ -23,7 +24,6 @@ import (
 	"github.com/fractal-platform/fractal/rlp"
 	"github.com/fractal-platform/fractal/utils"
 	"github.com/fractal-platform/fractal/utils/log"
-	"github.com/deckarep/golang-set"
 	"github.com/ratelimit"
 	"sync"
 	"time"
@@ -303,14 +303,23 @@ func (pm *ProtocolManager) Start(maxPeers int) {
 func (pm *ProtocolManager) Stop() {
 	log.Info("Stopping Fractal protocol")
 
-	pm.txsSub.Unsubscribe() // quits txBroadcastLoop
-	pm.txPkgSub.Unsubscribe()
+	if pm.txsSub != nil {
+		pm.txsSub.Unsubscribe() // quits txBroadcastLoop
+	}
+
+	if pm.txPkgSub != nil {
+		pm.txPkgSub.Unsubscribe()
+	}
 
 	if pm.newMinedBlockSub != nil {
 		pm.newMinedBlockSub.Unsubscribe() // quits blockBroadcastLoop
 	}
 
-	pm.newPackedSub.Unsubscribe() // quits packageBroadcastLoop
+	if pm.newPackedSub != nil {
+		pm.newPackedSub.Unsubscribe() // quits packageBroadcastLoop
+	}
+
+	close(pm.BlockProcessCh)
 
 	// Quit the sync loop.
 	close(pm.syncQuitCh)
@@ -940,16 +949,27 @@ func (pm *ProtocolManager) insertTxPackage(pkg *types.TxPackage, broadcast bool,
 
 // Packer broadcast loop
 func (pm *ProtocolManager) packageBroadcastLoop() {
+	pm.wg.Add(1)
+	defer pm.wg.Done()
+
 	// automatically stops if unsubscribe
-	for e := range pm.newPackedCh {
-		for _, pkg := range e.Pkgs {
-			pm.BroadcastTxPackage(pkg, true)
+	for {
+		select {
+		case e := <-pm.newPackedCh:
+			for _, pkg := range e.Pkgs {
+				pm.BroadcastTxPackage(pkg, true)
+			}
+		case <-pm.newPackedSub.Err():
+			return
 		}
 	}
 }
 
 // block process loop
 func (pm *ProtocolManager) blockProcessLoop(index int) {
+	pm.wg.Add(1)
+	defer pm.wg.Done()
+
 	for block := range pm.BlockProcessCh {
 		log.Info("process block start", "index", index, "hash", block.Block.FullHash())
 		pm.blockProcessLock.Lock()
@@ -1009,12 +1029,20 @@ func (pm *ProtocolManager) blockProcessLoop(index int) {
 
 // Mined broadcast loop
 func (pm *ProtocolManager) minedBroadcastLoop() {
+	pm.wg.Add(1)
+	defer pm.wg.Done()
+
 	// automatically stops if unsubscribe
-	for e := range pm.newMinedBlockCh {
-		block := e.Block
-		if block != nil {
-			pm.BroadcastBlock(block)
-		} else {
+	for {
+		select {
+		case e := <-pm.newMinedBlockCh:
+			block := e.Block
+			if block != nil {
+				pm.BroadcastBlock(block)
+			} else {
+				return
+			}
+		case <-pm.newMinedBlockSub.Err():
 			return
 		}
 	}
