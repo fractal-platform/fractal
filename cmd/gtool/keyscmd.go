@@ -127,7 +127,10 @@ func listKeys(ctx *cli.Context) error {
 	}
 
 	miningKeyManager := keys.NewMiningKeyManager(path.Join(folder, miningKeySubFolder), password)
-	miningKeyManager.Load()
+	if err := miningKeyManager.Load(); err != nil {
+		return err
+	}
+
 	for k, v := range miningKeyManager.Keys() {
 		fmt.Printf("Mining Key Address: %s\n", hexutil.Encode(k[:]))
 		for pub := range v {
@@ -136,9 +139,10 @@ func listKeys(ctx *cli.Context) error {
 	}
 
 	packerKeyManager := keys.NewPackerKeyManager(path.Join(folder, packerKeySubFolder), password)
-	if packerKeyManager.Load() != nil {
-		panic("unlock password error")
+	if err := packerKeyManager.Load(); err != nil {
+		return err
 	}
+
 	for k, v := range packerKeyManager.Keys() {
 		fmt.Printf("Packer Key Address: %s\n", hexutil.Encode(k[:]))
 		for pub := range v {
@@ -229,7 +233,10 @@ func registerMiningKey(ctx *cli.Context) error {
 	}
 	miningKeyPath := path.Join(folder, "mining_keys")
 	miningKeyManager := keys.NewMiningKeyManager(miningKeyPath, password)
-	miningKeyManager.Load()
+	if err := miningKeyManager.Load(); err != nil {
+		return err
+	}
+
 	miningKeys := miningKeyManager.Keys()[accountKey.Address]
 
 	// mining pub key
