@@ -62,7 +62,9 @@ func NewMiningKeyManager(directory string, password string) *MiningKeyManager {
 }
 
 func (s *MiningKeyManager) Start() {
-	s.Load()
+	if s.Load() != nil {
+		panic("unlock password error")
+	}
 	go func() {
 		timer := time.NewTimer(scanInterval)
 		s.wg.Add(1)
@@ -72,7 +74,9 @@ func (s *MiningKeyManager) Start() {
 			case <-s.term:
 				return
 			case <-timer.C:
-				s.Load()
+				if s.Load() != nil {
+					panic("unlock password error")
+				}
 				timer.Reset(scanInterval)
 			}
 		}
