@@ -3,6 +3,7 @@ package pksvc
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -154,6 +155,7 @@ type worker struct {
 	timeout  *time.Ticker
 	ctx      context.Context
 	cancel   context.CancelFunc
+	wg       sync.WaitGroup // for shutdown sync
 
 	newPkgEventFeed *event.Feed
 }
@@ -184,6 +186,8 @@ func (w *worker) start(packerIndex uint32) {
 func (w *worker) stop() {
 	if w.cancel != nil {
 		w.cancel()
+		w.wg.Wait()
+		log.Info("worker of packer service is stopped")
 	}
 	if w.timeout != nil {
 		w.timeout.Stop()
@@ -192,6 +196,9 @@ func (w *worker) stop() {
 }
 
 func (w *worker) loop() {
+	w.wg.Add(1)
+	defer w.wg.Done()
+
 	for {
 		select {
 		case <-w.txContainer.newTxCh:

@@ -49,7 +49,8 @@ type removePeerCallback func(id string, addBlack bool)
 
 type Synchronizer struct {
 	config     *config.SyncConfig
-	syncQuitCh chan struct{} // for quit
+	syncQuitCh chan struct{}  // for quit
+	syncQuitWg sync.WaitGroup // for shutdown sync
 	log        log.Logger
 
 	chain              blockchain
@@ -138,6 +139,7 @@ func (s *Synchronizer) Start() {
 
 func (s *Synchronizer) Stop() {
 	close(s.syncQuitCh)
+	s.syncQuitWg.Wait()
 }
 
 func (s *Synchronizer) AddPeer(p *network.Peer) {
@@ -158,6 +160,8 @@ func (s *Synchronizer) RemovePeer(p *network.Peer) {
 }
 
 func (s *Synchronizer) loop() {
+	s.syncQuitWg.Add(1)
+	defer s.syncQuitWg.Done()
 
 	// Wait for different events to fire synchronisation operations
 	for {

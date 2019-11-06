@@ -37,9 +37,6 @@ import (
 type Fractal struct {
 	config *config.Config
 
-	// Channel for shutting down the service
-	shutdownChan chan bool // Channel for shutting down
-
 	//
 	signer types.Signer
 
@@ -47,9 +44,12 @@ type Fractal struct {
 	chainDb dbwrapper.Database
 
 	// chain object
-	blockchain    *chain.BlockChain
+	blockchain *chain.BlockChain
+
+	// bloom
 	bloomRequests chan chan *bloomquery.Retrieval // Channel receiving bloom data retrieval requests
 	bloomIndexer  *bloomstorage.BloomIndexer      // Bloom indexer operating during block imports
+	shutdownChan  chan bool                       // Channel for shutting down
 
 	//
 	txPool  pool.Pool
@@ -280,17 +280,23 @@ func (s *Fractal) startAdminRPC() {
 
 // terminating all internal goroutines
 func (s *Fractal) Stop() error {
+	close(s.shutdownChan)
 	s.bloomIndexer.Close()
+	s.miner.Close()
 	s.protocolManager.Stop()
-	s.txPool.Stop()
-	s.miner.Stop()
 	s.packer.StopPacking()
+	s.pkgPool.Stop()
+	s.txPool.Stop()
 
+	s.adminRpcServer.Shutdown()
+	s.rpcServer.Shutdown()
+	s.server.Stop()
+
+	s.blockchain.StopRecord()
 	s.miningKeyManager.Stop()
 	s.packerKeyManager.Stop()
 
 	s.chainDb.Close()
-	close(s.shutdownChan)
 	return nil
 }
 

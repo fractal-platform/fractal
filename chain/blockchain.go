@@ -587,3 +587,8 @@ func IsReOrg(new *types.Block, oldHead *types.Block) bool {
 func (bc *BlockChain) SearchTransactionInCache(txHash common.Hash) (*types.Transaction, common.Hash) {
 	return bc.txInChainProcessor.SearchTransactionInHeap(txHash)
 }
+
+func (bc *BlockChain) StopRecord() {
+	bc.mainBranchRecord.Stop()
+	bc.txInChainProcessor.Stop()
+}
