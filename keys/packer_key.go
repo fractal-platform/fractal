@@ -55,8 +55,11 @@ func NewPackerKeyManager(directory string, password string) *PackerKeyManager {
 	}
 }
 
-func (s *PackerKeyManager) Start() {
-	s.Load()
+func (s *PackerKeyManager) Start() error {
+	if err := s.Load(); err != nil {
+		return err
+	}
+
 	go func() {
 		timer := time.NewTimer(scanInterval)
 		s.wg.Add(1)
@@ -71,6 +74,7 @@ func (s *PackerKeyManager) Start() {
 			}
 		}
 	}()
+	return nil
 }
 
 func (s *PackerKeyManager) Stop() {

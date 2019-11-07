@@ -74,7 +74,10 @@ func genGenesisState(ctx *cli.Context) error {
 		miningKeyDir := path.Join(path.Join(dir.Name(), "keys"), miningKeySubFolder)
 		if _, err := os.Stat(miningKeyDir); !os.IsNotExist(err) {
 			keyman := keys.NewMiningKeyManager(miningKeyDir, password)
-			keyman.Load()
+			if err := keyman.Load(); err != nil {
+				return err
+			}
+
 			for addr, v := range keyman.Keys() {
 				for pubkey := range v {
 					miningKeyMap[addr] = pubkey
@@ -85,7 +88,10 @@ func genGenesisState(ctx *cli.Context) error {
 		packerKeyDir := path.Join(path.Join(dir.Name(), "keys"), packerKeySubFolder)
 		if _, err := os.Stat(packerKeyDir); !os.IsNotExist(err) {
 			keyman := keys.NewPackerKeyManager(packerKeyDir, password)
-			keyman.Load()
+			if err := keyman.Load(); err != nil {
+				return err
+			}
+
 			for addr, v := range keyman.Keys() {
 				for pubkey := range v {
 					packerKeyMap[addr] = pubkey
