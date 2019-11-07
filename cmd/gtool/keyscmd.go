@@ -117,7 +117,9 @@ func listKeys(ctx *cli.Context) error {
 	}
 
 	miningKeyManager := keys.NewMiningKeyManager(path.Join(folder, miningKeySubFolder), password)
-	miningKeyManager.Load()
+	if err := miningKeyManager.Load(); err != nil {
+		return err
+	}
 	for k, v := range miningKeyManager.Keys() {
 		fmt.Printf("Mining Key Address: %s\n", hexutil.Encode(k[:]))
 		for pub := range v {
@@ -126,7 +128,9 @@ func listKeys(ctx *cli.Context) error {
 	}
 
 	packerKeyManager := keys.NewPackerKeyManager(path.Join(folder, packerKeySubFolder), password)
-	packerKeyManager.Load()
+	if err := packerKeyManager.Load(); err != nil {
+		return err
+	}
 	for k, v := range packerKeyManager.Keys() {
 		fmt.Printf("Packer Key Address: %s\n", hexutil.Encode(k[:]))
 		for pub := range v {
@@ -153,6 +157,8 @@ func newKeys(ctx *cli.Context) error {
 	// create if not exists
 	if _, err := os.Stat(folder); os.IsNotExist(err) {
 		os.MkdirAll(folder, 0755)
+	} else {
+		return errors.New("key already exist: " + folder)
 	}
 
 	accountKeyFile := path.Join(folder, "account.json")
@@ -215,7 +221,10 @@ func registerMiningKey(ctx *cli.Context) error {
 	}
 	miningKeyPath := path.Join(folder, "mining_keys")
 	miningKeyManager := keys.NewMiningKeyManager(miningKeyPath, password)
-	miningKeyManager.Load()
+	if err := miningKeyManager.Load(); err != nil {
+		return err
+	}
+
 	miningKeys := miningKeyManager.Keys()[accountKey.Address]
 
 	// mining pub key

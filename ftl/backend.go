@@ -135,9 +135,13 @@ func NewFtl(cfg *config.Config) (*Fractal, error) {
 
 	// setup keys for packer&miner
 	ftl.packerKeyManager = keys.NewPackerKeyManager(ftl.config.PackerKeyFolder, ftl.config.KeyPass)
-	ftl.packerKeyManager.Start()
+	if err := ftl.packerKeyManager.Start(); err != nil {
+		return nil, err
+	}
 	ftl.miningKeyManager = keys.NewMiningKeyManager(ftl.config.MinerKeyFolder, ftl.config.KeyPass)
-	ftl.miningKeyManager.Start()
+	if err := ftl.miningKeyManager.Start(); err != nil {
+		return nil, err
+	}
 
 	// setup packer
 	ftl.packer = pksvc.NewPacker(ftl.config, ftl.pkgPool, ftl.packerKeyManager, ftl.signer, ftl.blockchain, ftl.config.ChainConfig.PackerGroupSize)

@@ -61,8 +61,10 @@ func NewMiningKeyManager(directory string, password string) *MiningKeyManager {
 	}
 }
 
-func (s *MiningKeyManager) Start() {
-	s.Load()
+func (s *MiningKeyManager) Start() error {
+	if err := s.Load(); err != nil {
+		return err
+	}
 	go func() {
 		timer := time.NewTimer(scanInterval)
 		s.wg.Add(1)
@@ -77,6 +79,7 @@ func (s *MiningKeyManager) Start() {
 			}
 		}
 	}()
+	return nil
 }
 
 func (s *MiningKeyManager) Stop() {
@@ -150,7 +153,7 @@ func (s *MiningKeyManager) Load() error {
 			plainText, err := DecryptData(minerCrypto.MinerCrypto, s.password)
 			if err != nil {
 				log.Error("Decrypt Data failed", "path", path, "err", err.Error())
-				continue
+				return err
 			}
 
 			key, err := crypto.UnmarshalPrivKey(crypto.BLS, plainText)
