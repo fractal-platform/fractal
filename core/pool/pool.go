@@ -122,7 +122,6 @@ func NewPool(conf config.PoolConfig, chain BlockChain, elemType reflect.Type, he
 	pool.invalidTxCounter = metrics.NewRegisteredCounter(elemType.String()+"-pool/invalid", nil)
 
 	// Start the event loop and return
-	pool.wg.Add(1)
 	go pool.loop()
 
 	return pool
@@ -132,6 +131,7 @@ func NewPool(conf config.PoolConfig, chain BlockChain, elemType reflect.Type, he
 // outside blockchain events as well as for various reporting and element
 // eviction events.
 func (pool *pool) loop() {
+	pool.wg.Add(1)
 	defer pool.wg.Done()
 
 	// Start the stats reporting and element eviction tickers

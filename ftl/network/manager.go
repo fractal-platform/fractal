@@ -277,13 +277,27 @@ func (pm *ProtocolManager) Start(maxPeers int) {
 func (pm *ProtocolManager) Stop() {
 	log.Info("Stopping Fractal protocol")
 
-	pm.txsSub.Unsubscribe() // quits txBroadcastLoop
-
-	if pm.newMinedBlockSub != nil {
-		pm.newMinedBlockSub.Unsubscribe() // quits blockBroadcastLoop
+	if pm.txsSub != nil {
+		pm.txsSub.Unsubscribe()
 	}
 
-	pm.newPackedSub.Unsubscribe() // quits packageBroadcastLoop
+	if pm.newMinedBlockSub != nil {
+		pm.newMinedBlockSub.Unsubscribe()
+	}
+
+	if pm.newPackedSub != nil {
+		pm.newPackedSub.Unsubscribe()
+	}
+
+	if pm.futureBlockSub != nil {
+		pm.futureBlockSub.Unsubscribe()
+	}
+
+	if pm.futureTxPackageSub != nil {
+		pm.futureTxPackageSub.Unsubscribe()
+	}
+
+	close(pm.BlockProcessCh)
 
 	// Quit the sync loop.
 	pm.synchronizer.Stop()
@@ -422,6 +436,9 @@ func (pm *ProtocolManager) insertTxPackage(pkg *types.TxPackage, broadcast bool,
 
 // block process loop
 func (pm *ProtocolManager) blockProcessLoop(index int) {
+	pm.wg.Add(1)
+	defer pm.wg.Done()
+
 	for block := range pm.BlockProcessCh {
 		log.Info("process block start", "index", index, "hash", block.Block.FullHash())
 		pm.blockProcessLock.Lock()
@@ -551,6 +568,12 @@ func (pm *ProtocolManager) BroadcastTxPackage(pkg *types.TxPackage, propagate bo
 }
 
 func (pm *ProtocolManager) loop() {
+	pm.wg.Add(1)
+	defer pm.wg.Done()
+
+	const channelNumber = 5
+	var closedChannelNumber int
+
 	for {
 		select {
 		case pkgs := <-pm.newPackedCh:
@@ -573,6 +596,33 @@ func (pm *ProtocolManager) loop() {
 		case event := <-pm.futureTxPackageCh:
 			pkg := event.Pkg
 			pm.insertTxPackage(pkg, false, true)
+
+			// quit
+		case <-pm.newPackedSub.Err():
+			closedChannelNumber++
+			if closedChannelNumber == channelNumber {
+				return
+			}
+		case <-pm.newMinedBlockSub.Err():
+			closedChannelNumber++
+			if closedChannelNumber == channelNumber {
+				return
+			}
+		case <-pm.txsSub.Err():
+			closedChannelNumber++
+			if closedChannelNumber == channelNumber {
+				return
+			}
+		case <-pm.futureBlockSub.Err():
+			closedChannelNumber++
+			if closedChannelNumber == channelNumber {
+				return
+			}
+		case <-pm.futureTxPackageSub.Err():
+			closedChannelNumber++
+			if closedChannelNumber == channelNumber {
+				return
+			}
 		}
 	}
 }

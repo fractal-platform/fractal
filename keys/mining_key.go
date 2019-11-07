@@ -45,6 +45,7 @@ type MiningKeyManager struct {
 
 	lock sync.RWMutex
 	term chan struct{}
+	wg   sync.WaitGroup // for shutdown sync
 }
 
 func NewMiningKeyManager(directory string, password string) *MiningKeyManager {
@@ -64,6 +65,8 @@ func (s *MiningKeyManager) Start() {
 	s.Load()
 	go func() {
 		timer := time.NewTimer(scanInterval)
+		s.wg.Add(1)
+		defer s.wg.Done()
 		for {
 			select {
 			case <-s.term:
@@ -78,6 +81,7 @@ func (s *MiningKeyManager) Start() {
 
 func (s *MiningKeyManager) Stop() {
 	close(s.term)
+	s.wg.Wait()
 }
 
 func (s *MiningKeyManager) CreateKey(address common.Address) crypto.PublicKey {

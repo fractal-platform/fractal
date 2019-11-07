@@ -2,6 +2,7 @@ package chain
 
 import (
 	"container/heap"
+	"context"
 	"sync"
 	"time"
 
@@ -41,6 +42,10 @@ type TxInChainProcessor struct {
 
 	blockHeap blockWithExecutedTxHeap
 	heapMu    sync.RWMutex
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup // for shutdown sync
 }
 
 func NewTxInChainProcessor(chain *BlockChain, processPeriod int) *TxInChainProcessor {
@@ -109,6 +114,7 @@ func NewTxInChainProcessor(chain *BlockChain, processPeriod int) *TxInChainProce
 		dbaccessor.WriteTxSavedBlockHeightAndHash(p.chain.db, p.chain.CurrentBlock().Header.Height, p.chain.CurrentBlock().FullHash())
 	}
 
+	p.ctx, p.cancel = context.WithCancel(context.Background())
 	go p.loop(time.NewTicker(time.Duration(processPeriod) * time.Second))
 	return p
 }
@@ -151,90 +157,106 @@ func (p *TxInChainProcessor) SearchTransactionInHeap(txHash common.Hash) (*types
 }
 
 func (p *TxInChainProcessor) loop(ticker *time.Ticker) {
-	for range ticker.C {
-		currentHeight := p.chain.CurrentBlock().Header.Height
+	p.wg.Add(1)
+	defer p.wg.Done()
 
-		// 1. health check. if reorg happened, reset the height <= txSavedHeight
-		var savedHeight uint64
-		var savedHash common.Hash
-		var err error
-		if savedHeight, savedHash, err = dbaccessor.ReadTxSavedBlockHeightAndHash(p.chain.db); err == nil {
-			if mainBlock, err := p.chain.GetMainBranchBlock(savedHeight); err == nil {
-				if mainBlock.FullHash() != savedHash {
-					log.Info("TxInChainProcessor loop: reorg happe", "savedHeight", savedHeight)
-					old := p.chain.GetBlock(savedHash)
-					chain := dbaccessor.FindReorgChain(p.chain.db, &old.Header, &mainBlock.Header)
-					if len(chain) <= 1 {
-						panic("recorg chain length < 1")
-					}
-					for i := 1; i < len(chain); i++ {
-						hash := chain[i].FullHash()
-						block := p.chain.GetBlock(hash)
-						var confirmBlocks types.Blocks
-						for _, fullHash := range block.Header.Confirms {
-							var confirmBlock = p.chain.GetBlock(fullHash)
-							confirmBlocks = append(confirmBlocks, confirmBlock)
+	for {
+		select {
+		case <-ticker.C:
+			currentHeight := p.chain.CurrentBlock().Header.Height
+
+			// 1. health check. if reorg happened, reset the height <= txSavedHeight
+			var savedHeight uint64
+			var savedHash common.Hash
+			var err error
+			if savedHeight, savedHash, err = dbaccessor.ReadTxSavedBlockHeightAndHash(p.chain.db); err == nil {
+				if mainBlock, err := p.chain.GetMainBranchBlock(savedHeight); err == nil {
+					if mainBlock.FullHash() != savedHash {
+						log.Info("TxInChainProcessor loop: reorg happe", "savedHeight", savedHeight)
+						old := p.chain.GetBlock(savedHash)
+						chain := dbaccessor.FindReorgChain(p.chain.db, &old.Header, &mainBlock.Header)
+						if len(chain) <= 1 {
+							panic("recorg chain length < 1")
 						}
-						_, _, executedTxs, _, err := p.chain.execBlock(block, confirmBlocks)
-						if err == nil {
-							dbaccessor.WriteTxLookupEntries(p.chain.db, block.Header.Height, hash, executedTxs)
-						} else {
-							panic("TxInChainProcessor loop: unexpected error, execBlock failed")
+						for i := 1; i < len(chain); i++ {
+							hash := chain[i].FullHash()
+							block := p.chain.GetBlock(hash)
+							var confirmBlocks types.Blocks
+							for _, fullHash := range block.Header.Confirms {
+								var confirmBlock = p.chain.GetBlock(fullHash)
+								confirmBlocks = append(confirmBlocks, confirmBlock)
+							}
+							_, _, executedTxs, _, err := p.chain.execBlock(block, confirmBlocks)
+							if err == nil {
+								dbaccessor.WriteTxLookupEntries(p.chain.db, block.Header.Height, hash, executedTxs)
+							} else {
+								panic("TxInChainProcessor loop: unexpected error, execBlock failed")
+							}
 						}
+						dbaccessor.WriteTxSavedBlockHeightAndHash(p.chain.db, mainBlock.Header.Height, mainBlock.FullHash())
 					}
-					dbaccessor.WriteTxSavedBlockHeightAndHash(p.chain.db, mainBlock.Header.Height, mainBlock.FullHash())
 				}
 			}
-		}
 
-		// 2. process heap
-		var stableHeight uint64
-		if currentHeight < params.ConfirmHeightDistance {
-			continue
-		}
-		stableHeight = currentHeight - params.ConfirmHeightDistance
-
-		var processedHeight uint64 = math.MaxUint64
-		for {
-			p.heapMu.Lock()
-			if p.blockHeap.Len() == 0 {
-				p.heapMu.Unlock()
-				break
-			}
-
-			accessBlock := p.blockHeap[0].block
-			accessTxs := p.blockHeap[0].executedTxs
-
-			if accessBlock.Header.Height == processedHeight {
-				// this height has been processed
-				heap.Pop(&p.blockHeap)
-				p.heapMu.Unlock()
+			// 2. process heap
+			var stableHeight uint64
+			if currentHeight < params.ConfirmHeightDistance {
 				continue
 			}
+			stableHeight = currentHeight - params.ConfirmHeightDistance
 
-			if accessBlock.Header.Height >= stableHeight {
+			var processedHeight uint64 = math.MaxUint64
+			for {
+				p.heapMu.Lock()
+				if p.blockHeap.Len() == 0 {
+					p.heapMu.Unlock()
+					break
+				}
+
+				accessBlock := p.blockHeap[0].block
+				accessTxs := p.blockHeap[0].executedTxs
+
+				if accessBlock.Header.Height == processedHeight {
+					// this height has been processed
+					heap.Pop(&p.blockHeap)
+					p.heapMu.Unlock()
+					continue
+				}
+
+				if accessBlock.Header.Height >= stableHeight {
+					p.heapMu.Unlock()
+					break
+				}
+
+				mainBlockInHeight, err := p.chain.GetMainBranchBlock(accessBlock.Header.Height)
+				if err != nil {
+					p.heapMu.Unlock()
+					break
+				}
+
+				heap.Pop(&p.blockHeap)
 				p.heapMu.Unlock()
-				break
-			}
 
-			mainBlockInHeight, err := p.chain.GetMainBranchBlock(accessBlock.Header.Height)
-			if err != nil {
-				p.heapMu.Unlock()
-				break
-			}
-
-			heap.Pop(&p.blockHeap)
-			p.heapMu.Unlock()
-
-			if mainBlockInHeight.FullHash() == accessBlock.FullHash() {
-				processedHeight = accessBlock.Header.Height
-				// save to db
-				dbaccessor.WriteTxLookupEntries(p.chain.db, accessBlock.Header.Height, accessBlock.FullHash(), accessTxs)
-				if accessBlock.Header.Height > savedHeight {
-					// save
-					dbaccessor.WriteTxSavedBlockHeightAndHash(p.chain.db, accessBlock.Header.Height, accessBlock.FullHash())
+				if mainBlockInHeight.FullHash() == accessBlock.FullHash() {
+					processedHeight = accessBlock.Header.Height
+					// save to db
+					dbaccessor.WriteTxLookupEntries(p.chain.db, accessBlock.Header.Height, accessBlock.FullHash(), accessTxs)
+					if accessBlock.Header.Height > savedHeight {
+						// save
+						dbaccessor.WriteTxSavedBlockHeightAndHash(p.chain.db, accessBlock.Header.Height, accessBlock.FullHash())
+					}
 				}
 			}
+		case <-p.ctx.Done():
+			return
 		}
+	}
+}
+
+func (p *TxInChainProcessor) Stop() {
+	if p.cancel != nil {
+		p.cancel()
+		p.wg.Wait()
+		log.Info("tx in chain processor is stopped")
 	}
 }

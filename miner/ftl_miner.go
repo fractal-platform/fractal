@@ -70,6 +70,7 @@ func (self *ftlMiner) Stop() {
 }
 
 func (self *ftlMiner) Close() {
+	log.Info("close miner")
 	self.worker.close()
 }
 

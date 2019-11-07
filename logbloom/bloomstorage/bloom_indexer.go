@@ -69,7 +69,7 @@ type BloomIndexer struct {
 	update    chan sectionUpdateNotify // Notification channel that section should be processed
 	quit      chan chan error          // Quit channel to tear down running goroutines
 	ctx       context.Context
-	ctxCancel func()
+	ctxCancel context.CancelFunc
 }
 
 // NewBloomIndexer creates a new chain indexer to do background processing on

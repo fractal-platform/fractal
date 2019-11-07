@@ -5,6 +5,7 @@
 package rpcserver
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -84,6 +85,10 @@ func (srv *Server) ListenAndServe() {
 type reqHandler struct {
 	rpcHandler *rpcHandler
 	wsHandler  *wsHandler
+}
+
+func (srv *Server) Shutdown() {
+	srv.httpServer.Shutdown(context.Background())
 }
 
 // callback handler for http server

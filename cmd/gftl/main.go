@@ -154,6 +154,7 @@ func gftl(ctx *cli.Context) error {
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigc)
 	<-sigc
+	go f.Stop()
 	fmt.Printf("Got interrupt, shutting down...\n")
 	for i := 2; i > 0; i-- {
 		<-sigc
