@@ -21,6 +21,7 @@ int c_call_action(unsigned long long callbackParamKey, char *to, char *actionByt
 int c_call_result(unsigned long long callbackParamKey, char *value, int valueLength);
 int c_set_result(unsigned long long callbackParamKey, char *value, int valueLength);
 unsigned char c_call_depth(unsigned long long callbackParamKey);
+int c_sha256(char *input, int length, char *hash);
 
 typedef struct {
 	void *cb_store;
@@ -37,6 +38,7 @@ typedef struct {
 	void *c_call_action;
 	void *c_call_result;
 	void *c_set_result;
+	void *c_sha256;
 } Callbacks;
 
 int execute(unsigned char *codeBytes, int codeLength, unsigned char *actionBytes, int actionLength, unsigned char *fromAddrBytes, unsigned char *toAddrBytes, unsigned char *owner, unsigned char *user, unsigned long long amount, unsigned long long *remainedGas, unsigned long long callbackParamKey, Callbacks *callbacks);
@@ -44,22 +46,22 @@ int execute(unsigned char *codeBytes, int codeLength, unsigned char *actionBytes
 static inline int execute_go(unsigned char *codeBytes, int codeLength, unsigned char *actionBytes, int actionLength, unsigned char *fromAddrBytes, unsigned char *toAddrBytes, unsigned char *owner, unsigned char *user, unsigned long long amount, unsigned long long *remainedGas, unsigned long long callbackParamKey) {
 	Callbacks callbacks= {	c_db_store, c_db_load, c_db_has_key, c_db_remove_key,
 							c_db_has_table, c_db_remove_table, c_chain_current_time, c_chain_current_height, c_chain_current_hash,
-							c_add_log, c_transfer, c_call_action, c_call_result, c_set_result };
+							c_add_log, c_transfer, c_call_action, c_call_result, c_set_result, c_sha256 };
 	return execute(codeBytes, codeLength, actionBytes, actionLength, fromAddrBytes, toAddrBytes, owner, user, amount, remainedGas, callbackParamKey, &callbacks);
 }
 */
 import "C"
 import (
 	"errors"
-	"unsafe"
-
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/nonces"
 	"github.com/fractal-platform/fractal/core/state"
 	"github.com/fractal-platform/fractal/core/types"
 	"github.com/fractal-platform/fractal/core/wasm"
 	"github.com/fractal-platform/fractal/crypto"
+	"github.com/fractal-platform/fractal/crypto/sha3"
 	"github.com/fractal-platform/fractal/utils/log"
+	"unsafe"
 )
 
 const MaxWasmCallDepth = 8
@@ -482,4 +484,22 @@ func c_set_result(callbackParamKey C.ulonglong, result *C.char, length C.int) C.
 func c_call_depth(callbackParamKey C.ulonglong) C.uchar {
 	depth := wasm.GetGlobalRegisterParam().GetCurrentDepth(uint64(callbackParamKey))
 	return C.uchar(depth)
+}
+
+//export c_sha256
+func c_sha256(input *C.char, length C.int, hash *C.char) C.int {
+	inputSlice, err := Pointer2Slice(unsafe.Pointer(input), int(length))
+	if err != nil {
+		log.Error("c_sha256 convert input failed", "err", err.Error())
+		return -1
+	}
+
+	hashSlice := sha3.Sum256(inputSlice)
+	if hash != nil {
+		targetSlice := (*[1 << 28]C.char)(unsafe.Pointer(hash))[:32:32]
+		for i := 0; i < 32 && i < len(hashSlice); i++ {
+			targetSlice[i] = C.char(hashSlice[i])
+		}
+	}
+	return 0
 }
