@@ -29,10 +29,6 @@ import (
 	"sort"
 )
 
-const (
-	clientIdentifier = "wasmtest" // Client identifier to advertise over the network
-)
-
 var (
 	// flags
 	WasmPathFlag = cli.StringFlag{
@@ -145,7 +141,7 @@ func exec(ctx *cli.Context) error {
 	}
 
 	writer := bytes.NewBuffer(actionBytes)
-	serializer, err := abi.NewAbiSerializer(string(abidef))
+	serializer, _ := abi.NewAbiSerializer(string(abidef))
 	err = serializer.Serialize(argsData, action, writer)
 	if err != nil {
 		log.Error("serialize args failed", "err", err)
