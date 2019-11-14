@@ -93,6 +93,10 @@ func (bc *BlockChain) GetBreakPoint(checkpoint *types.Block, headBlock *types.Bl
 		childBlock = block
 	}
 
+	fromBlock, _ := bc.GetBlockBeforeCacheHeight(parentBlock, bc.chainConfig.Greedy)
+	if fromBlock != nil {
+		return fromBlock, childBlock, nil
+	}
 	return parentBlock, childBlock, nil
 }
 
