@@ -99,7 +99,7 @@ func (s *Synchronizer) doSyncAndCheckFixPoint(peers []peer, bestPeer peer, commo
 			root := blocks[i].Header.StateHash
 			s.log.Info("start sync state", "rootHash", root, "Height", blocks[i].Header.Height, "fullHash", blocks[i].FullHash())
 
-			var peersErr = make([]peer, 10)
+			var peersErr []peer
 			s.stateSync = downloader.SyncState(peerMap, func(id string, addBlack bool) {
 				peersErr = append(peersErr, peerMap[id].(peer))
 				delete(peerMap, id)
