@@ -42,8 +42,6 @@ static inline int execute_go(unsigned char *codeBytes, int codeLength, unsigned 
 import "C"
 import (
 	"errors"
-	"unsafe"
-
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/nonces"
 	"github.com/fractal-platform/fractal/core/state"
@@ -51,12 +49,16 @@ import (
 	"github.com/fractal-platform/fractal/core/wasm"
 	"github.com/fractal-platform/fractal/crypto"
 	"github.com/fractal-platform/fractal/utils/log"
+	"sync"
+	"unsafe"
 )
 
 type WasmExecutor struct {
 	signer       types.Signer
 	maxBitLength uint64
 }
+
+var wasmMutex sync.Mutex
 
 func NewWasmExecutor(signer types.Signer, maxBitLength uint64) TxExecutor {
 	log.Info("NewExecutor: Init WasmExecutor")
@@ -235,6 +237,9 @@ func WasmApplyMessage(prevStateDb *state.StateDB, statedb *state.StateDB, msg Me
 }
 
 func CallWasmContract(codePointer unsafe.Pointer, codeLength int, actionPointer unsafe.Pointer, actionLength int, fromAddrPointer unsafe.Pointer, toAddrPointer unsafe.Pointer, ownerPointer unsafe.Pointer, amount uint64, remainedGas *uint64, callbackParamKey uint64) int {
+	wasmMutex.Lock()
+	defer wasmMutex.Unlock()
+
 	preGas := *remainedGas
 	ret := int(C.execute_go((*C.uchar)(codePointer), C.int(codeLength), (*C.uchar)(actionPointer), C.int(actionLength), (*C.uchar)(fromAddrPointer), (*C.uchar)(toAddrPointer), (*C.uchar)(ownerPointer),
 		(C.ulonglong)(amount), (*C.ulonglong)(remainedGas), C.ulonglong(callbackParamKey)))
