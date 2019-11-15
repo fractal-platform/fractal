@@ -234,7 +234,7 @@ func (s *Synchronizer) syncPreStates(treePoint *types.TreePoint, peerMap map[str
 		root := block.Header.StateHash
 		s.log.Info("start sync state", "rootHash", root, "Height", block.Header.Height, "fullHash", block.FullHash())
 
-		var peersErr = make([]peer, 10)
+		var peersErr []peer
 		s.stateSync = downloader.SyncState(peerMap, func(id string, addBlack bool) {
 			peersErr = append(peersErr, peerMap[id].(peer))
 			delete(peerMap, id)
