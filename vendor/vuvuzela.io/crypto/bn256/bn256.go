@@ -21,7 +21,8 @@ import (
 )
 
 // #cgo CFLAGS: -std=c99 -O3 -fomit-frame-pointer -DQHASM
-// #cgo LDFLAGS: -lm
+// #cgo !windows LDFLAGS: -lm
+
 /*
 #include "optate.h"
 */
