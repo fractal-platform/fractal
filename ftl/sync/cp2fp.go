@@ -208,7 +208,7 @@ func (t *CP2FPTask) process() {
 		t.logger.Info("getBlocksFromCheckpointToFixPoint", "len(longHashListReverse)", len(longHashListReverse), "hashFrom", longHashListReverse[0],
 			"hashTo", longHashListReverse[len(longHashListReverse)-1], "allPeersForDownloader", peerMap, "genesisRound", t.sync.chain.Genesis().Header.Round)
 		var blockCh = make(chan *types.Block)
-		t.blockSync = downloader.StartFetchBlocks(from.Round-1, to.Round, peerMap, func(id string, addBlack bool) {
+		t.blockSync = downloader.StartFetchBlocks(from.Round-400, to.Round, peerMap, func(id string, addBlack bool) {
 			t.removePeerFn(id, addBlack)
 		}, false, protocol.SyncStageCP2FP, t.sync.chain, blockCh)
 
