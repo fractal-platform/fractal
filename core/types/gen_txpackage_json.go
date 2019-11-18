@@ -23,6 +23,8 @@ func (p pkgData) MarshalJSON() ([]byte, error) {
 		S             *hexutil.Big   `json:"s"`
 		V             *hexutil.Big   `json:"v"`
 		Hash          *common.Hash   `json:"hash" rlp:"-"`
+		GenTime       uint64         `json:"genTime"`
+		HopCount      uint64         `json:"hopCount"`
 	}
 	var enc pkgData
 	enc.Packer = p.Packer
@@ -33,6 +35,8 @@ func (p pkgData) MarshalJSON() ([]byte, error) {
 	enc.S = (*hexutil.Big)(p.S)
 	enc.V = (*hexutil.Big)(p.V)
 	enc.Hash = p.Hash
+	enc.GenTime = p.GenTime
+	enc.HopCount = p.HopCount
 	return json.Marshal(&enc)
 }
 
@@ -47,6 +51,8 @@ func (p *pkgData) UnmarshalJSON(input []byte) error {
 		S             *hexutil.Big    `json:"s"`
 		V             *hexutil.Big    `json:"v"`
 		Hash          *common.Hash    `json:"hash" rlp:"-"`
+		GenTime       *uint64         `json:"genTime"`
+		HopCount      *uint64         `json:"hopCount"`
 	}
 	var dec pkgData
 	if err := json.Unmarshal(input, &dec); err != nil {
@@ -75,6 +81,12 @@ func (p *pkgData) UnmarshalJSON(input []byte) error {
 	}
 	if dec.Hash != nil {
 		p.Hash = dec.Hash
+	}
+	if dec.GenTime != nil {
+		p.GenTime = *dec.GenTime
+	}
+	if dec.HopCount != nil {
+		p.HopCount = *dec.HopCount
 	}
 	return nil
 }
