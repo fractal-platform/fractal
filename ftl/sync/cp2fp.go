@@ -20,6 +20,7 @@ const (
 type CP2FPSync struct {
 	task     *CP2FPTask
 	taskLock sync.RWMutex
+	taskCh   chan *CP2FPTask
 
 	// for skeleton hash process
 	peerSkeletonCh  chan PeerHashElemList
@@ -32,7 +33,8 @@ type CP2FPSync struct {
 
 func newCP2FPSync(peerSkeletonCh chan PeerHashElemList, timeoutSkeleton int, sync *Synchronizer) *CP2FPSync {
 	res := &CP2FPSync{
-		task: nil,
+		task:   nil,
+		taskCh: make(chan *CP2FPTask),
 
 		peerSkeletonCh:  peerSkeletonCh,
 		timeoutSkeleton: timeoutSkeleton,
@@ -40,42 +42,37 @@ func newCP2FPSync(peerSkeletonCh chan PeerHashElemList, timeoutSkeleton int, syn
 		removePeerFn:    sync.removePeerCallback,
 		logger:          sync.log,
 	}
+
+	go res.loop()
 	return res
+}
+
+func (s *CP2FPSync) loop() {
+	for {
+		select {
+		case task := <- s.taskCh:
+			s.taskLock.Lock()
+			s.task = task
+			s.taskLock.Unlock()
+
+			s.task.process()
+
+			s.taskLock.Lock()
+			s.task = nil
+			s.taskLock.Unlock()
+		}
+	}
 }
 
 func (s *CP2FPSync) startTask(blockFrom *types.Block, blockTo *types.Block, peers []peer) {
 	// stop first
 	s.stopAll()
 
-	// find break point
-	var fromHashElem protocol.HashElem
-	var toHashElem protocol.HashElem
-	fromBlock, toBlock, err := s.sync.chain.GetBreakPoint(blockFrom, blockTo)
-	if err != nil {
-		s.logger.Error("can't find from or to break point", "err", err)
-		return
-	} else if fromBlock == nil || toBlock == nil {
-		s.logger.Info("break point is nil, no need to sync")
-		return
-	} else {
-		for i := 0; i < taskBackTrackLength; i++ {
-			oldFromBlock := fromBlock
-			fromBlock = s.sync.chain.GetBlock(fromBlock.Header.ParentFullHash)
-			if fromBlock == nil {
-				fromBlock = oldFromBlock
-				break
-			}
-		}
-
-		fromHashElem = protocol.HashElem{Height: fromBlock.Header.Height, Hash: fromBlock.FullHash(), Round: fromBlock.Header.Round}
-		toHashElem = protocol.HashElem{Height: toBlock.Header.Height, Hash: toBlock.FullHash(), Round: toBlock.Header.Round}
-	}
-
-	s.task = &CP2FPTask{
+	task := &CP2FPTask{
 		quitCh: make(chan struct{}),
 
-		from:  fromHashElem,
-		to:    toHashElem,
+		from:  blockFrom,
+		to:    blockTo,
 		peers: peers,
 
 		peerSkeletonCh:  s.peerSkeletonCh,
@@ -85,8 +82,8 @@ func (s *CP2FPSync) startTask(blockFrom *types.Block, blockTo *types.Block, peer
 		removePeerFn: s.removePeerFn,
 		logger:       s.logger,
 	}
-	s.logger.Info("start cp2fp task", "fromHashElem", fromHashElem, "toHashElem", toHashElem, "honestPeers", peers)
-	go s.task.process()
+
+	s.taskCh <- task
 }
 
 func (s *CP2FPSync) isRunning() bool {
@@ -128,8 +125,8 @@ type CP2FPTask struct {
 	quitOnce sync.Once
 
 	// task info
-	from  protocol.HashElem
-	to    protocol.HashElem
+	from  *types.Block
+	to    *types.Block
 	peers []peer
 
 	// for block sync
@@ -145,9 +142,39 @@ type CP2FPTask struct {
 }
 
 func (t *CP2FPTask) process() {
-	from := t.from
-	to := t.to
+	// find break point
+	var from protocol.HashElem
+	var to protocol.HashElem
+	fromBlock, toBlock, err := t.sync.chain.GetBreakPoint(t.from, t.to)
+	if err != nil {
+		t.logger.Error("can't find from or to break point", "err", err)
+		return
+	} else if fromBlock == nil || toBlock == nil {
+		t.logger.Info("break point is nil, no need to sync")
+		return
+	} else {
+		for i := 0; i < taskBackTrackLength; i++ {
+			oldFromBlock := fromBlock
+			fromBlock = t.sync.chain.GetBlock(fromBlock.Header.ParentFullHash)
+			if fromBlock == nil {
+				fromBlock = oldFromBlock
+				break
+			}
+		}
+
+		from = protocol.HashElem{Height: fromBlock.Header.Height, Hash: fromBlock.FullHash(), Round: fromBlock.Header.Round}
+		to = protocol.HashElem{Height: toBlock.Header.Height, Hash: toBlock.FullHash(), Round: toBlock.Header.Round}
+	}
+
 	peers := t.peers
+	t.logger.Info("start cp2fp task", "fromHashElem", from, "toHashElem", to, "honestPeers", peers)
+
+	select {
+	case <- t.quitCh:
+		t.logger.Info("cp2fp task quit")
+		return
+	default:
+	}
 
 	//if to is below from, no need to sync
 	if (from.Height == 0 && to.Height <= from.Height+2) || (from.Height != 0 && to.Height <= from.Height) {
