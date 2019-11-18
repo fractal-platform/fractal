@@ -48,19 +48,16 @@ func newCP2FPSync(peerSkeletonCh chan PeerHashElemList, timeoutSkeleton int, syn
 }
 
 func (s *CP2FPSync) loop() {
-	for {
-		select {
-		case task := <- s.taskCh:
-			s.taskLock.Lock()
-			s.task = task
-			s.taskLock.Unlock()
+	for task := range s.taskCh {
+		s.taskLock.Lock()
+		s.task = task
+		s.taskLock.Unlock()
 
-			s.task.process()
+		s.task.process()
 
-			s.taskLock.Lock()
-			s.task = nil
-			s.taskLock.Unlock()
-		}
+		s.taskLock.Lock()
+		s.task = nil
+		s.taskLock.Unlock()
 	}
 }
 
@@ -170,7 +167,7 @@ func (t *CP2FPTask) process() {
 	t.logger.Info("start cp2fp task", "fromHashElem", from, "toHashElem", to, "honestPeers", peers)
 
 	select {
-	case <- t.quitCh:
+	case <-t.quitCh:
 		t.logger.Info("cp2fp task quit")
 		return
 	default:
