@@ -137,10 +137,10 @@ func (bc *BlockChain) insertBlockIntoDB(block *types.Block) {
 	// unlock
 	bc.mu.Unlock()
 
-	elapse := int64(block.ReceivedAt.UnixNano()/1e6) - int64(block.Header.MinedTime)
-	if elapse < 0 {
-		elapse = 0
-	}
+	//elapse := int64(block.ReceivedAt.UnixNano()/1e6) - int64(block.Header.MinedTime)
+	//if elapse < 0 {
+	//	elapse = 0
+	//}
 	bc.logger.Info("Insert block OK", "type", "console", "height", block.Header.Height, "round", block.Header.Round,
 		"hash", block.FullHash(), "difficulty", block.Header.Difficulty,
 		"txCount", len(block.Body.Transactions), "pkgCount", len(block.Body.TxPackageHashes))
