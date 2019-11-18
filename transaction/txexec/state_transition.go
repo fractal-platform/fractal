@@ -7,7 +7,6 @@ package txexec
 import (
 	"math"
 	"math/big"
-	"reflect"
 	"unsafe"
 
 	"github.com/fractal-platform/fractal/common"
@@ -148,8 +147,7 @@ func (st *StateTransition) buyGas() error {
 }
 
 func (st *StateTransition) preCheck() error {
-	data := reflect.ValueOf(st.prevStateDb)
-	if !data.IsNil() {
+	if st.prevStateDb != nil {
 		newStartNonce := st.prevStateDb.GetNonce(st.msg.From())
 		prev := nonces.NewNonceSet(st.nonceSet)
 		err, changed := st.nonceSet.Reset(newStartNonce)
