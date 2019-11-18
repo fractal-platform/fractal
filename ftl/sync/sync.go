@@ -274,7 +274,7 @@ func (s *Synchronizer) doInit() {
 	if diff < s.config.HeightDiff {
 		//sync from break point or checkpoint
 		peers := s.getPeers()
-		s.cp2fp.startTask(s.chain.Genesis(), s.chain.CurrentBlock(), peers)
+		go s.cp2fp.startTask(s.chain.Genesis(), s.chain.CurrentBlock(), peers)
 
 		// change to normal state
 		s.changeSyncStatus(SyncStatusNormal)
