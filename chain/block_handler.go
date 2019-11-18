@@ -108,6 +108,11 @@ func (bc *BlockChain) insertBlockIntoDB(block *types.Block) {
 	// lock
 	bc.mu.Lock()
 
+	if bc.HasBlock(block.FullHash()) {
+		bc.mu.Unlock()
+		return
+	}
+
 	// store round-hash-list
 	hashList := dbaccessor.ReadHashListByRound(bc.db, block.Header.Round)
 	hashList = append(hashList, &types.BlockRoundHash{
@@ -119,7 +124,7 @@ func (bc *BlockChain) insertBlockIntoDB(block *types.Block) {
 	dbaccessor.WriteHashList(bc.db, block.Header.Round, hashList)
 
 	// store hash-childs
-	dbaccessor.WriteBlockChilds(bc.db, block.FullHash(), []common.Hash{})
+	//dbaccessor.WriteBlockChilds(bc.db, block.FullHash(), []common.Hash{})
 
 	// store block
 	dbaccessor.WriteBlock(bc.db, block)
@@ -139,8 +144,8 @@ func (bc *BlockChain) insertBlockIntoDB(block *types.Block) {
 	bc.logger.Info("Insert block OK", "type", "console", "height", block.Header.Height, "round", block.Header.Round,
 		"hash", block.FullHash(), "difficulty", block.Header.Difficulty,
 		"txCount", len(block.Body.Transactions), "pkgCount", len(block.Body.TxPackageHashes))
-	bc.logger.Info("Block metric information", "hash", block.FullHash(),
-		"duration", common.PrettyDuration(time.Since(block.ReceivedAt)), "elapse", elapse, "hop", block.Header.HopCount)
+	//bc.logger.Info("Block metric information", "hash", block.FullHash(),
+	//	"duration", common.PrettyDuration(time.Since(block.ReceivedAt)), "elapse", elapse, "hop", block.Header.HopCount)
 }
 
 func (bc *BlockChain) checkCheckPoint(currentBlock *types.Block, block *types.Block) bool {
@@ -189,10 +194,7 @@ func (bc *BlockChain) InsertPastBlock(block *types.Block) error {
 	} else {
 		bc.insertBlockState(block, state, receipts, executedTxs, bloom)
 	}
-	dbaccessor.WriteHeadBlockHash(bc.db, block.FullHash())
 	return nil
-	//
-	//bc.chainUpdateFeed.Send(types.ChainUpdateEvent{block})
 }
 
 // insert block

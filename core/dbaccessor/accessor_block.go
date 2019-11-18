@@ -379,7 +379,7 @@ func ReadBlockStateCheck(db DatabaseReader, hash common.Hash) types.BlockStateCh
 		return result
 	}
 	result = types.BlockStateCheckedEnum(data[0])
-	log.Info("ReadBlockStateCheck", "hash", hash, "result", result)
+	//log.Info("ReadBlockStateCheck", "hash", hash, "result", result)
 	return result
 }
 

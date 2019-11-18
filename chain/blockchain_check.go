@@ -10,6 +10,7 @@ import (
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/dbaccessor"
 	"github.com/fractal-platform/fractal/core/types"
+	"github.com/fractal-platform/fractal/utils/log"
 )
 
 func (bc *BlockChain) GetBreakPoint(checkpoint *types.Block, headBlock *types.Block) (*types.Block, *types.Block, error) {
@@ -44,6 +45,7 @@ func (bc *BlockChain) GetBreakPoint(checkpoint *types.Block, headBlock *types.Bl
 
 	for {
 		if len(currentBlocks) <= 0 {
+			log.Info("below breakpoint(blocks empty)", "hash", parentBlock.FullHash())
 			break
 		}
 		var nextBlocks []common.Hash
@@ -56,6 +58,7 @@ func (bc *BlockChain) GetBreakPoint(checkpoint *types.Block, headBlock *types.Bl
 			}
 
 			if bc.GetBlockStateChecked(currBlock) != types.BlockStateChecked {
+				log.Info("below breakpoint(state not checked)", "hash", currBlock.FullHash())
 				break
 			}
 			//
@@ -68,6 +71,7 @@ func (bc *BlockChain) GetBreakPoint(checkpoint *types.Block, headBlock *types.Bl
 			break
 		}
 		if existAndRight == 0 {
+			log.Info("below breakpoint", "hash", parentBlock.FullHash())
 			break
 		}
 		currentBlocks = nextBlocks
@@ -79,10 +83,12 @@ func (bc *BlockChain) GetBreakPoint(checkpoint *types.Block, headBlock *types.Bl
 	for childBlock != nil {
 		block := bc.GetBlock(childBlock.Header.ParentFullHash)
 		if block == nil {
+			log.Info("above breakpoint", "hash", childBlock.FullHash())
 			break
 		}
 
 		if bc.GetBlockStateChecked(block) != types.BlockStateChecked {
+			log.Info("above breakpoint(state not checked)", "hash", block.FullHash())
 			break
 		}
 
