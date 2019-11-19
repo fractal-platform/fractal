@@ -421,7 +421,7 @@ func (pm *ProtocolManager) handleMsg(p *Peer) error {
 				request.Block.ReceivedFrom = p
 				request.Block.ReceivedPath = types.BlockMined
 				request.Block.Header.HopCount++
-				log.Info("send to block process channel(NewBlockMsg)", "hash", request.Block.FullHash())
+				//log.Info("send to block process channel(NewBlockMsg)", "hash", request.Block.FullHash())
 				pm.BlockProcessCh <- &BlockWithVerifyFlag{request.Block, true}
 			}
 		} else {
@@ -458,7 +458,7 @@ func (pm *ProtocolManager) handleMsg(p *Peer) error {
 				block.ReceivedFrom = p
 				// Fast sync starts all execution after pulling all the blocks and packages at the beginning, so there is no dependency problem. So it won't be fast sync here.
 				block.ReceivedPath = types.BlockMined
-				log.Info("send to block process channel(BlocksMsg)", "hash", block.FullHash())
+				//log.Info("send to block process channel(BlocksMsg)", "hash", block.FullHash())
 				pm.BlockProcessCh <- &BlockWithVerifyFlag{block, true}
 			}
 		}
@@ -971,7 +971,7 @@ func (pm *ProtocolManager) blockProcessLoop(index int) {
 	defer pm.wg.Done()
 
 	for block := range pm.BlockProcessCh {
-		log.Info("process block start", "index", index, "hash", block.Block.FullHash())
+		//log.Info("process block start", "index", index, "hash", block.Block.FullHash())
 		pm.blockProcessLock.Lock()
 		if !pm.blockProcessing.Contains(block.Block.FullHash()) && !pm.blockchain.HasBlock(block.Block.FullHash()) {
 			pm.blockProcessing.Add(block.Block.FullHash())
@@ -1023,7 +1023,7 @@ func (pm *ProtocolManager) blockProcessLoop(index int) {
 			log.Debug("blockProcessLoop:have been in blockProcessing Set or in blockChain", "Hash", block.Block.FullHash(), "Height", block.Block.Header.Height)
 			pm.blockProcessLock.Unlock()
 		}
-		log.Info("process block over", "index", index, "hash", block.Block.FullHash())
+		//log.Info("process block over", "index", index, "hash", block.Block.FullHash())
 	}
 }
 

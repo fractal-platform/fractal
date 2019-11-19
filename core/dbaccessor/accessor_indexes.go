@@ -53,7 +53,7 @@ func ReadTxLookupEntryRLP(db DatabaseReader, hash common.Hash) (rlp.RawValue, er
 }
 
 func WriteTxLookupEntries(db dbwrapper.Database, blockHeight uint64, blockFullHash common.Hash, executedTxs []*types.TxWithIndex) {
-	log.Info("WriteTxLookupEntries", "blockHeight", blockHeight, "blockFullHash", blockFullHash, "executedTxsNum", len(executedTxs))
+	//log.Info("WriteTxLookupEntries", "blockHeight", blockHeight, "blockFullHash", blockFullHash, "executedTxsNum", len(executedTxs))
 
 	if len(executedTxs) == 0 {
 		return

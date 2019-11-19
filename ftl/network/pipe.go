@@ -8,7 +8,6 @@ import (
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/core/types"
 	"sync"
-	"time"
 )
 
 type taskType int
@@ -116,21 +115,21 @@ func (p *Peer) increaseCount(taskType taskType) {
 }
 
 func (p *Peer) processTask(taskType taskType, taskData interface{}) {
-	var count int
+	//var count int
 	p.pipe.mutex.Lock()
 	p.pipe.counts[taskType] -= 1
-	count = p.pipe.counts[taskType]
+	//count = p.pipe.counts[taskType]
 	p.pipe.mutex.Unlock()
 
 	switch taskType {
 	case taskTypePropagateBlock:
 		block := taskData.(*types.Block)
-		p.Log().Info("Propagate block", "hash", block.FullHash(), "pipe", count, "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		//p.Log().Info("Propagate block", "hash", block.FullHash(), "pipe", count, "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		if err := p.SendNewBlock(block); err != nil {
 			p.Log().Error("Propagate block failed", "err", err)
 			return
 		}
-		p.Log().Info("Propagate block OK", "hash", block.FullHash(), "pipe", count, "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		//p.Log().Info("Propagate block OK", "hash", block.FullHash(), "pipe", count, "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 	case taskTypeAnnounceTxPkg:
 		pkgHash := taskData.(common.Hash)
 		//p.Log().Info("Announce tx package", "hash", pkgHash, "pipe", count)
@@ -148,7 +147,7 @@ func (p *Peer) processTask(taskType taskType, taskData interface{}) {
 		//p.Log().Info("Propagate tx package OK", "hash", pkg.Hash(), "pipe", count, "duration", common.PrettyDuration(time.Since(pkg.ReceivedAt)))
 	case taskTypePropagateTx:
 		txs := taskData.(types.Transactions)
-		p.Log().Info("Propagate transactions", "txCount", len(txs), "pipe", count)
+		//p.Log().Info("Propagate transactions", "txCount", len(txs), "pipe", count)
 		if err := p.SendTransactions(txs); err != nil {
 			p.Log().Error("Propagate transactions failed", "err", err)
 			return
