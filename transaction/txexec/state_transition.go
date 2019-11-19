@@ -7,7 +7,6 @@ package txexec
 import (
 	"math"
 	"math/big"
-	"reflect"
 
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
@@ -153,8 +152,7 @@ func (st *StateTransition) preCheck() error {
 		return ErrTransferIsNotAllowed
 	}
 
-	data := reflect.ValueOf(st.prevStateDb)
-	if !data.IsNil() {
+	if st.prevStateDb != nil {
 		newStartNonce := st.prevStateDb.GetNonce(st.msg.From())
 		prev := nonces.NewNonceSet(st.nonceSet)
 		err, changed := st.nonceSet.Reset(newStartNonce)
