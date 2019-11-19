@@ -129,7 +129,7 @@ func setPacker(ctx *cli.Context) error {
 	buffer := bytes.NewBufferString("[")
 	buffer.WriteString(strconv.Itoa(int(packerId)) + ",")
 	buffer.WriteString("\"" + packerRpcAddressString + "\",")
-	buffer.WriteString("\"" + packerCoinbaseString[2:] + "\",")
+	buffer.WriteString("\"" + packerCoinbaseString[:] + "\",")
 
 	// packerPubKey
 	packerPubKey, _ := hexutil.Decode(packerPubKeyString)

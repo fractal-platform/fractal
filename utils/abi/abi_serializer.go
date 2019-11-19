@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
@@ -46,6 +47,23 @@ func NewAbiSerializer(abi string) (*AbiSerializer, error) {
 
 func (s *AbiSerializer) Serialize(data interface{}, typeName string, w io.Writer) error {
 	var err error
+
+	if strings.HasSuffix(typeName, "[]") {
+		d := data.([]interface{})
+		length := uint32(len(d))
+		err = packVaruint32(length, w)
+		if err != nil {
+			return err
+		}
+		for _, v := range d {
+			err = s.Serialize(v, typeName[:len(typeName)-2], w)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	switch {
 	case typeName == "bool":
 		err = packBool(data, w)
