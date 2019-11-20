@@ -19,7 +19,7 @@ func (bc *BlockChain) CheckGreedy(block *types.Block, mainBlock *types.Block, gr
 
 	// if height diff is larger then greedy, then return false directly
 	heightDiff := utils.Abs(int64(block.Header.Height) - int64(mainBlock.Header.Height))
-	if heightDiff >= int64(greedy) {
+	if heightDiff > int64(greedy) {
 		return false, nil
 	}
 
@@ -27,7 +27,7 @@ func (bc *BlockChain) CheckGreedy(block *types.Block, mainBlock *types.Block, gr
 	if err != nil {
 		return false, err
 	}
-	if hopCount >= greedy {
+	if hopCount > greedy+1 {
 		return false, nil
 	}
 	return true, nil
