@@ -194,7 +194,7 @@ func (c *chainReader) GetNearbyBlocks(blockFullHash string, width uint32) ([]*Bl
 
 func (c *chainReader) GetTxPackageByHash(pkgHash string) (*TxPackage, error) {
 	var txPackage *TxPackage
-	err := c.call(*txPackage, "pack_getTxPackageByHash", pkgHash)
+	err := c.call(&txPackage, "pack_getTxPackageByHash", pkgHash)
 	return txPackage, err
 }
 
