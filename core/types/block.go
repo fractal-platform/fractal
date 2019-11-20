@@ -32,7 +32,7 @@ type BlockHeader struct {
 	TxHash         common.Hash    `json:"txHash"           gencodec:"required"`
 	ReceiptHash    common.Hash    `json:"receiptsRoot"     gencodec:"required"`
 	ParentFullHash common.Hash    `json:"parentFullHash"   gencodec:"required"`
-	Confirms       []common.Hash  `json:"confirms"         gencodec:"required"`
+	Confirms       []common.Hash  `json:"confirms"`
 	FullSig        []byte         `json:"fullSig"          gencodec:"required"`
 	MinedTime      uint64         `json:"minedTime"        gencodec:"required"`
 	HopCount       uint64         `json:"hopCount"         gencodec:"required"`
@@ -71,8 +71,8 @@ func (bh *BlockHeader) FullHash() common.Hash {
 
 // BlockHeader represents the body of a block in the Fractal blockchain
 type BlockBody struct {
-	Transactions    []*Transaction `json:"transactions"     gencodec:"required"`
-	TxPackageHashes []common.Hash  `json:"txpackages"     gencodec:"required"`
+	Transactions    []*Transaction `json:"transactions"`
+	TxPackageHashes []common.Hash  `json:"txpackages"`
 }
 
 type BlockReceivePathEnum byte
@@ -89,7 +89,6 @@ const (
 	NoBlockState BlockStateCheckedEnum = iota
 	HasBlockStateButNotChecked
 	BlockStateChecked
-
 )
 
 // Block represents a block in the Fractal blockchain.
