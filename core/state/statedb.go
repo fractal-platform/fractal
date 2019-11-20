@@ -275,13 +275,13 @@ func (self *StateDB) GetPackerInfo(index uint32) *types.PackerInfo {
 		return nil
 	}
 	var coinbase common.Address
-	copy(coinbase[:], storageBytes[4:24])
+	copy(coinbase[:], storageBytes[:20])
 	var packerPubKey types.PackerECPubKey
-	copy(packerPubKey[:], storageBytes[25:90])
+	copy(packerPubKey[:], storageBytes[21:86])
 	info := &types.PackerInfo{
 		PackerPubKey: packerPubKey,
 		Coinbase:     coinbase,
-		RpcAddress:   string(storageBytes[91:]),
+		RpcAddress:   string(storageBytes[87:]),
 	}
 	return info
 }
@@ -294,7 +294,7 @@ func (self *StateDB) GetPackerNumber() uint32 {
 		log.Error("GetPackerNumber error, cannot find the packer size", "storageKey", hexutil.Encode(storageKey.ToSlice()))
 		return 0
 	}
-	number := binary.LittleEndian.Uint32(storageBytes[1:])
+	number := binary.LittleEndian.Uint32(storageBytes[:])
 	return number
 }
 

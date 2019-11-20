@@ -320,6 +320,8 @@ func (st *StateTransition) callWasm() error {
 			log.Error("CallWasmContract return with error", "ret", ret)
 			return ErrWasmExec
 		}
+	} else {
+		log.Warn("call wasm failed", "data", len(st.data), "code", len(code), "from", st.msg.From(), "nonce", st.msg.Nonce())
 	}
 	return nil
 }
