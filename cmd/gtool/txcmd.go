@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"path"
+	"sync/atomic"
 	"time"
 
 	"github.com/fractal-platform/fractal/common"
@@ -56,6 +57,22 @@ var (
 					ChainIdFlag,
 					KeyFolderFlag,
 					PasswordFlag,
+				},
+			},
+			{
+				Name:   "batch",
+				Usage:  "Batch Send Transaction",
+				Action: batchSendTransaction,
+				Flags: []cli.Flag{
+					RpcFlag,
+					PackerFlag,
+					ToFlag,
+					ValueFlag,
+					ChainIdFlag,
+					KeyFolderFlag,
+					PasswordFlag,
+					TpsFlag,
+					NProcessFlag,
 				},
 			},
 			{
@@ -189,96 +206,92 @@ func sendTransaction(ctx *cli.Context) error {
 	return err
 }
 
-//func batchSendTransaction(ctx *cli.Context) error {
-//	initLogger(ctx)
-//
-//	tps := ctx.GlobalInt(TpsFlag.Name)
-//	nprocess := ctx.GlobalInt(NProcessFlag.Name)
-//	rpc := ctx.GlobalString(RpcFlag.Name)
-//	packer := ctx.GlobalBool(PackerFlag.Name)
-//	to := ctx.GlobalString(ToFlag.Name)
-//	value := ctx.GlobalInt64(ValueFlag.Name)
-//
-//	//signer
-//	chainid := ctx.GlobalInt(ChainIdFlag.Name)
-//	signer := types.NewEIP155Signer(uint64(chainid))
-//
-//	//key
-//	folder := ctx.GlobalString(KeyFolderFlag.Name)
-//	password := ctx.GlobalString(PasswordFlag.Name)
-//	accountKeyFile := path.Join(folder, "account.json")
-//	accountKey, err := keys.LoadAccountKey(accountKeyFile, password)
-//	if err != nil {
-//		log.Error("load account key error", "err", err)
-//		return err
-//	}
-//
-//	var nonce uint64
-//	var hexNonce hexutil.Uint64
-//	client, err := rpcclient.Dial(rpc)
-//	if err != nil {
-//		log.Error("connect to rpc error", "rpc", rpc)
-//		return err
-//	}
-//	err = client.Call(&hexNonce, "txpool_getTransactionNonce", accountKey.Address)
-//	if err != nil {
-//		log.Error("get tx nonce error", "err", err)
-//		return err
-//	}
-//	nonce = (uint64)(hexNonce)
-//	log.Info("get nonce ok", "nonce", nonce)
-//
-//	var addrTo = common.HexToAddress(to)
-//	lastTime := time.Now().UnixNano()
-//	for i := 0; i < nprocess; i++ {
-//		go func(index int) error {
-//			// Connect the client.
-//			client, err := rpcclient.Dial(rpc)
-//			if err != nil {
-//				log.Error("connect to rpc error", "rpc", rpc)
-//				return err
-//			}
-//
-//			ticker := time.NewTicker(time.Nanosecond * time.Duration(1e9*nprocess/tps))
-//			for {
-//				select {
-//				case <-ticker.C:
-//					currentNonce := atomic.AddUint64(&nonce, 1)
-//					var tx *types.Transaction
-//					if packer {
-//						tx = types.NewTransaction(currentNonce, addrTo, big.NewInt(value), 3e6, common.Big1, []byte{}, false)
-//					} else {
-//						tx = types.NewTransaction(currentNonce, addrTo, big.NewInt(value), 3e6, common.Big1, []byte{}, true)
-//					}
-//					tx, err = types.SignTx(tx, signer, accountKey.PrivKey)
-//					if err != nil {
-//						log.Error("sign tx error", "err", err)
-//						return err
-//					}
-//
-//					err = sendTxToRpc(tx, client)
-//					if err != nil {
-//						continue
-//					}
-//				}
-//			}
-//
-//		}(i)
-//	}
-//
-//	var lastNonce uint64 = nonce
-//	for {
-//		currentTime := time.Now().UnixNano()
-//		if currentTime-lastTime > 1e9 {
-//			log.Info("generating transaction", "tps", nonce-lastNonce)
-//			lastTime = currentTime
-//			lastNonce = nonce
-//		}
-//		time.Sleep(time.Millisecond)
-//	}
-//
-//	return nil
-//}
+func batchSendTransaction(ctx *cli.Context) error {
+	initLogger(ctx)
+
+	tps := ctx.GlobalInt(TpsFlag.Name)
+	nprocess := ctx.GlobalInt(NProcessFlag.Name)
+	rpc := ctx.GlobalString(RpcFlag.Name)
+	packer := ctx.GlobalBool(PackerFlag.Name)
+	to := ctx.GlobalString(ToFlag.Name)
+	value := ctx.GlobalInt64(ValueFlag.Name)
+
+	//signer
+	chainid := ctx.GlobalInt(ChainIdFlag.Name)
+	signer := types.NewEIP155Signer(uint64(chainid))
+
+	//key
+	folder := ctx.GlobalString(KeyFolderFlag.Name)
+	password := ctx.GlobalString(PasswordFlag.Name)
+	accountKeyFile := path.Join(folder, "account.json")
+	accountKey, err := keys.LoadAccountKey(accountKeyFile, password)
+	if err != nil {
+		log.Error("load account key error", "err", err)
+		return err
+	}
+
+	var nonce uint64
+	var hexNonce hexutil.Uint64
+	client, err := rpcclient.Dial(rpc)
+	if err != nil {
+		log.Error("connect to rpc error", "rpc", rpc)
+		return err
+	}
+	err = client.Call(&hexNonce, "txpool_getTransactionNonce", accountKey.Address)
+	if err != nil {
+		log.Error("get tx nonce error", "err", err)
+		return err
+	}
+	nonce = (uint64)(hexNonce)
+	log.Info("get nonce ok", "nonce", nonce)
+
+	var addrTo = common.HexToAddress(to)
+	lastTime := time.Now().UnixNano()
+	for i := 0; i < nprocess; i++ {
+		go func(index int) {
+			// Connect the client.
+			client, err := rpcclient.Dial(rpc)
+			if err != nil {
+				log.Error("connect to rpc error", "rpc", rpc)
+				return
+			}
+
+			ticker := time.NewTicker(time.Nanosecond * time.Duration(1e9*nprocess/tps))
+			for range ticker.C {
+				currentNonce := atomic.AddUint64(&nonce, 1)
+				var tx *types.Transaction
+				if packer {
+					tx = types.NewTransaction(currentNonce, addrTo, big.NewInt(value), 3e6, common.Big1, []byte{}, false)
+				} else {
+					tx = types.NewTransaction(currentNonce, addrTo, big.NewInt(value), 3e6, common.Big1, []byte{}, true)
+				}
+				tx, err = types.SignTx(tx, signer, accountKey.PrivKey)
+				if err != nil {
+					log.Error("sign tx error", "err", err)
+					return
+				}
+
+				err = sendTxToRpc(tx, client)
+				if err != nil {
+					continue
+				}
+			}
+
+		}(i)
+	}
+
+	var lastNonce uint64 = nonce
+	for {
+		currentTime := time.Now().UnixNano()
+		if currentTime-lastTime > 1e9 {
+			log.Info("generating transaction", "tps", nonce-lastNonce)
+			lastTime = currentTime
+			lastNonce = nonce
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+}
 
 func deployContract(ctx *cli.Context) error {
 	initLogger(ctx)
