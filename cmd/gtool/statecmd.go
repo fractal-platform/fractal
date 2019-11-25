@@ -21,6 +21,7 @@ var (
 		Flags: []cli.Flag{
 			RpcFlag,
 			AddressFlag,
+			BlockHashFlag,
 			TableFlag,
 			StorageKeyFlag,
 			AbiFlag,
@@ -33,6 +34,7 @@ var (
 				Flags: []cli.Flag{
 					RpcFlag,
 					AddressFlag,
+					BlockHashFlag,
 				},
 			},
 			{
@@ -42,6 +44,7 @@ var (
 				Flags: []cli.Flag{
 					RpcFlag,
 					AddressFlag,
+					BlockHashFlag,
 					TableFlag,
 					StorageKeyFlag,
 					AbiFlag,
@@ -105,6 +108,7 @@ func queryStorage(ctx *cli.Context) error {
 	rpc := ctx.GlobalString(RpcFlag.Name)
 	addrString := ctx.GlobalString(AddressFlag.Name)
 	addr := common.HexToAddress(addrString)
+	bhashString := ctx.GlobalString(BlockHashFlag.Name)
 	table := ctx.GlobalString(TableFlag.Name)
 	skey := ctx.GlobalString(StorageKeyFlag.Name)
 	log.Info("skey data", "skey", skey)
@@ -138,16 +142,22 @@ func queryStorage(ctx *cli.Context) error {
 		return err
 	}
 
-	var head types.Block
-	err = client.Call(&head, "ftl_headBlock")
-	if err != nil {
-		log.Error("get head block error", "err", err)
-		return err
+	var blockHash common.Hash
+	if bhashString == "" {
+		var head types.Block
+		err = client.Call(&head, "ftl_headBlock")
+		if err != nil {
+			log.Error("get head block error", "err", err)
+			return err
+		}
+		log.Info("get head block ok", "height", head.Header.Height, "round", head.Header.Round, "hash", head.FullHash())
+		blockHash = head.FullHash()
+	} else {
+		blockHash = common.HexToHash(bhashString)
 	}
-	log.Info("get head block ok", "height", head.Header.Height, "round", head.Header.Round, "hash", head.FullHash())
 
 	var value hexutil.Bytes
-	err = client.Call(&value, "ftl_getStorageAt", addr, table, skeyHex, head.FullHash())
+	err = client.Call(&value, "ftl_getStorageAt", addr, table, skeyHex, blockHash)
 	if err != nil {
 		log.Error("get balance error", "err", err)
 		return err
