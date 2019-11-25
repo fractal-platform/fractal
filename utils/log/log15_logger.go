@@ -7,6 +7,7 @@ package log
 import (
 	"io"
 	"os"
+	"runtime"
 
 	"github.com/inconshreveable/log15"
 	"github.com/mattn/go-isatty"
@@ -94,7 +95,7 @@ func InitMultipleLog15Logger(level Lvl, fpWriter io.Writer, consoleFile *os.File
 	}
 	fpHandler := log15.LvlFilterHandler(lvl, log15.StreamHandler(fpWriter, log15.LogfmtFormat()))
 	consoleHandler := log15.MatchFilterHandler("type", "console", log15.StreamHandler(consoleFile, log15.LogfmtFormat()))
-	if isatty.IsTerminal(consoleFile.Fd()) {
+	if isatty.IsTerminal(consoleFile.Fd()) && runtime.GOOS != "windows"  {
 		consoleHandler = log15.MatchFilterHandler("type", "console", log15.StreamHandler(consoleFile, log15.TerminalFormat()))
 	}
 	logger.origin.SetHandler(log15.MultiHandler(fpHandler, consoleHandler))
