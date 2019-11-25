@@ -116,6 +116,11 @@ func (bc *BlockChain) insertBlockIntoDB(block *types.Block) {
 	// lock
 	bc.mu.Lock()
 
+	if bc.HasBlock(block.FullHash()) {
+		bc.mu.Unlock()
+		return
+	}
+
 	// store round-hash-list
 	hashList := dbaccessor.ReadHashListByRound(bc.db, block.Header.Round)
 	hashList = append(hashList, &types.BlockRoundHash{
@@ -127,7 +132,7 @@ func (bc *BlockChain) insertBlockIntoDB(block *types.Block) {
 	dbaccessor.WriteHashList(bc.db, block.Header.Round, hashList)
 
 	// store hash-childs
-	dbaccessor.WriteBlockChilds(bc.db, block.FullHash(), []common.Hash{})
+	//dbaccessor.WriteBlockChilds(bc.db, block.FullHash(), []common.Hash{})
 
 	// set accHash
 	bc.CalcuAccHash(block)
@@ -195,10 +200,7 @@ func (bc *BlockChain) InsertPastBlock(block *types.Block) error {
 	} else {
 		bc.insertBlockState(block, state, receipts, executedTxs, bloom)
 	}
-	dbaccessor.WriteHeadBlockHash(bc.db, block.FullHash())
 	return nil
-	//
-	//bc.chainUpdateFeed.Send(types.ChainUpdateEvent{block})
 }
 
 // insert block
