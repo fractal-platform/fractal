@@ -7,6 +7,7 @@ package txexec
 import (
 	"math"
 	"math/big"
+	"sync"
 
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
@@ -18,6 +19,8 @@ import (
 	"github.com/fractal-platform/fractal/params"
 	"github.com/fractal-platform/fractal/utils/log"
 )
+
+var wasmMutex sync.Mutex
 
 /*
 The State Transitioning Model
@@ -315,6 +318,11 @@ func (st *StateTransition) callWasm() error {
 		owner := st.state.GetContractOwner(to)
 		value := st.value.Uint64()
 		wasm.GetGlobalRegisterParam().ClearCallstack(st.callbackParamKey)
+
+		// lock first
+		wasmMutex.Lock()
+		defer wasmMutex.Unlock()
+
 		ret := CallWasmContract(code, st.data, from, to, owner, from, value, false, false, &st.gas, st.callbackParamKey)
 		if ret != 0 {
 			log.Error("CallWasmContract return with error", "ret", ret)
