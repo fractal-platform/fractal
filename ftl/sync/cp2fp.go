@@ -42,19 +42,16 @@ func newCP2FPSync(peerHashTreeRspCh chan protocol.SyncHashTreeRsp, sync *Synchro
 }
 
 func (s *CP2FPSync) loop() {
-	for {
-		select {
-		case task := <-s.taskCh:
-			s.taskLock.Lock()
-			s.task = task
-			s.taskLock.Unlock()
+	for task := range s.taskCh {
+		s.taskLock.Lock()
+		s.task = task
+		s.taskLock.Unlock()
 
-			s.task.process()
+		s.task.process()
 
-			s.taskLock.Lock()
-			s.task = nil
-			s.taskLock.Unlock()
-		}
+		s.taskLock.Lock()
+		s.task = nil
+		s.taskLock.Unlock()
 	}
 }
 
