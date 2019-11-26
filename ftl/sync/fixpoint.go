@@ -36,7 +36,7 @@ const (
 
 	err: errPeer (wrong with peer) ,forceQuit(quit initiative)
  */
-func (s *Synchronizer) doSyncAndCheckFixPoint(peers []peer, bestPeer peer, commonHashElems protocol.HashElems, bestHashElem protocol.HashElem, setHead bool) (bool, []peer, error) {
+func (s *Synchronizer) syncFixPointAndBest(peers []peer, bestPeer peer, commonHashElems protocol.HashElems, bestHashElem protocol.HashElem, setHead bool) (bool, []peer, error) {
 	fixPoint := commonHashElems[0]
 	commonHighestHashElem := commonHashElems[len(commonHashElems)-1]
 	traceBackBestPeerHashElem := commonHashElems[len(commonHashElems)-1-traceBackLengthForBestPeerBlocks]

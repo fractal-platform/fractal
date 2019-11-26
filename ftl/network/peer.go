@@ -322,7 +322,7 @@ func (p *Peer) RequestSyncHashTree(hashFrom common.Hash, hashTo common.Hash) err
 		HashFrom:    hashFrom,
 		HashTo:      hashTo,
 	}
-	p.Log().Info("Request sync hash tree", "reqID", reqID, "req", req)
+	p.Log().Info("Request sync hash tree", "reqID", reqID, "hashFrom", hashFrom, "hashTo", hashTo)
 	return p2p.Send(p.rw, protocol.SyncHashTreeReqMsg, req)
 }
 

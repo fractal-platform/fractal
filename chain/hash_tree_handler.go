@@ -86,7 +86,7 @@ func (bc *BlockChain) CreateHashTree(belowBlockHash common.Hash, upBlockHash com
 	hashIndexMap := make(map[common.Hash]uint64)
 
 	// tree point
-	preHeight := params.StakeRegisterHeightDistance
+	preHeight := params.StakeRegisterHeightDistance + MaxPackageHeightDelay
 	if belowHeight < preHeight {
 		preHeight = belowHeight
 	}

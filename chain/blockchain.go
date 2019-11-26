@@ -264,8 +264,6 @@ func (bc *BlockChain) calcAndCheckState(block *types.Block) bool {
 
 		// HasBlockStateButNotChecked
 		if stateCheckedEnum == types.HasBlockStateButNotChecked {
-			checkBlocks = append([]*types.Block{checkBlock}, checkBlocks...)
-			stateCheckedEnums = append([]types.BlockStateCheckedEnum{stateCheckedEnum}, stateCheckedEnums...)
 			break
 		}
 

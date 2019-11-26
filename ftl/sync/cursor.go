@@ -20,7 +20,7 @@ import (
 var (
 	cursorNo = 1
 
-	checkHeightMaxDiff  = uint64(10)
+	checkHeightMaxDiff = uint64(10)
 
 	errMainBlockCheckAndExecFailed = errors.New("main block check or exec failed")
 	errBlockCheckFailed            = errors.New("block check failed")

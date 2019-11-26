@@ -34,8 +34,6 @@ func (s *Synchronizer) doFastSync() {
 
 	treePoint := s.getLatestCheckPoint()
 
-	s.log.Info("checkpoint", "treePoint", treePoint)
-
 	var complexSync = false
 	var hasSkeleton = false
 	var peerLongHashListMap = make(map[string]protocol.HashElems)
@@ -43,7 +41,7 @@ func (s *Synchronizer) doFastSync() {
 	for len(honestPeers) > 0 {
 		//do syncFixPoint
 		var fixPoint protocol.HashElem
-		honestPeers, fixPoint, highestPoint, err := s.syncFixPoint(honestPeers, peerShortHashListMap)
+		honestPeers, fixPoint, highestPoint, err := s.doSimpleFastSync(honestPeers, peerShortHashListMap)
 		if err == nil {
 			s.log.Info("doFastSync syncFixPoint succeed")
 			s.fixPoint = fixPoint
@@ -163,8 +161,8 @@ func (s *Synchronizer) findCommonFromSkeletonLists(hasSkeleton bool, peers []pee
 //find fix point, and then sync fix point
 //return []peer(left honest peers)
 //return err: errNoCommonPrefixInShortHashLists , errPeer ,forceQuit
-func (s *Synchronizer) syncFixPoint(honestPeers []peer, peerShortHashListMap map[string]protocol.HashElems) ([]peer, protocol.HashElem, protocol.HashElem, error) {
-	s.log.Info("start to find and sync fix point", "honestPeerCount", len(honestPeers), "peerShortHashListMapSize", len(peerShortHashListMap))
+func (s *Synchronizer) doSimpleFastSync(honestPeers []peer, peerShortHashListMap map[string]protocol.HashElems) ([]peer, protocol.HashElem, protocol.HashElem, error) {
+	s.log.Info("do simple fast sync", "honestPeerCount", len(honestPeers), "peerShortHashListMapSize", len(peerShortHashListMap))
 
 	//set honestPeers left
 	var honestShortHashLists []protocol.HashElems
@@ -191,7 +189,7 @@ func (s *Synchronizer) syncFixPoint(honestPeers []peer, peerShortHashListMap map
 
 	//sync fixPoint
 	bestPeer, bestHashElem := getBestPeerByHashes(leftHonestPeers, peerShortHashListMap)
-	check, badPeers, err := s.doSyncAndCheckFixPoint(honestPeers, bestPeer, blockSyncHashList, bestHashElem, true)
+	check, badPeers, err := s.syncFixPointAndBest(honestPeers, bestPeer, blockSyncHashList, bestHashElem, true)
 	if err != nil || !check {
 		s.log.Error("sync fix point failed", "err", err, "check", check, "badPeers", badPeers)
 		if err.Error() == errPeer.Error() {
