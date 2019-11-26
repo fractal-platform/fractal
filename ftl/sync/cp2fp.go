@@ -17,6 +17,7 @@ import (
 type CP2FPSync struct {
 	task     *CP2FPTask
 	taskLock sync.RWMutex
+	taskCh   chan *CP2FPTask
 
 	// for skeleton hash process
 	peerHashTreeRspCh chan protocol.SyncHashTreeRsp
@@ -28,14 +29,33 @@ type CP2FPSync struct {
 
 func newCP2FPSync(peerHashTreeRspCh chan protocol.SyncHashTreeRsp, sync *Synchronizer) *CP2FPSync {
 	res := &CP2FPSync{
-		task: nil,
+		task:   nil,
+		taskCh: make(chan *CP2FPTask),
 
 		peerHashTreeRspCh: peerHashTreeRspCh,
 		sync:              sync,
 		removePeerFn:      sync.removePeerCallback,
 		logger:            sync.log,
 	}
+	go res.loop()
 	return res
+}
+
+func (s *CP2FPSync) loop() {
+	for {
+		select {
+		case task := <-s.taskCh:
+			s.taskLock.Lock()
+			s.task = task
+			s.taskLock.Unlock()
+
+			s.task.process()
+
+			s.taskLock.Lock()
+			s.task = nil
+			s.taskLock.Unlock()
+		}
+	}
 }
 
 func (s *CP2FPSync) startTask(currentHeight uint64, hashTo common.Hash, accHash common.Hash, peers []peer) {
@@ -50,17 +70,16 @@ func (s *CP2FPSync) startTask(currentHeight uint64, hashTo common.Hash, accHash 
 		s.sync.chain.StartCreateCheckPoint()
 		return
 	}
+
 	// check if no need to sync
 	_, _, err := s.sync.chain.CreateHashTree(checkPoint.FullHash, hashTo)
-
 	if err == nil {
 		s.logger.Info("local hash tree is full, no need to sync")
 		s.sync.chain.StartCreateCheckPoint()
 		return
 	}
-	s.logger.Info("cp2fp create hash tree failed", "err", err)
 
-	s.task = &CP2FPTask{
+	task := &CP2FPTask{
 		quitCh: make(chan struct{}),
 
 		from:    checkPoint.FullHash,
@@ -76,7 +95,7 @@ func (s *CP2FPSync) startTask(currentHeight uint64, hashTo common.Hash, accHash 
 		logger:       s.logger,
 	}
 	s.logger.Info("start cp2fp task", "fromHash", checkPoint.FullHash, "fromHeight", checkPoint.Height, "toHash", hashTo, "accHash", accHash, "honestPeers", peers)
-	go s.task.process()
+	s.taskCh <- task
 }
 
 func (s *CP2FPSync) isRunning() bool {
@@ -155,7 +174,6 @@ func (t *CP2FPTask) process() {
 						break
 					}
 				}
-
 			}
 			t.logger.Error("fulfill from point to point failed", "err", err, "errPeer", errPeers)
 			continue

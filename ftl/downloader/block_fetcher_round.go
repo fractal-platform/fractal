@@ -537,9 +537,7 @@ func (bf *BlockFetcherByRound) checkFinishBlocks() {
 			for _, block := range bf.pending {
 				if bf.checkFinishBlock(block) {
 					bf.logger.Info("Send the block to sync", "hash", block.FullHash(), "round", block.Header.Round, "height", block.Header.Height)
-					go func(b *types.Block) {
-						bf.outputBlock <- b
-					}(block)
+					bf.outputBlock <- block
 					delete(bf.pending, block.FullHash())
 				}
 			}
@@ -584,8 +582,8 @@ func (bf *BlockFetcherByRound) pkgReqFinished() {
 		select {
 		case <-bf.pkgsFetcher.finishReqs:
 			bf.logger.Info("BlocksWithPkgsFetcher receive a finished flag!")
-			bf.assignTaskCh <- struct{}{}
 			bf.checkBlocks <- struct{}{}
+			bf.assignTaskCh <- struct{}{}
 		case <-bf.done:
 			return
 		}

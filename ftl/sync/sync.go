@@ -281,7 +281,7 @@ func (s *Synchronizer) doInit() {
 		// change to normal state
 		s.changeSyncStatus(SyncStatusNormal)
 		peers := s.getPeers()
-		s.cp2fp.startTask(s.chain.CurrentBlock().Header.Height, s.chain.CurrentBlock().FullHash(), s.chain.CurrentBlock().AccHash, peers)
+		go s.cp2fp.startTask(s.chain.CurrentBlock().Header.Height, s.chain.CurrentBlock().FullHash(), s.chain.CurrentBlock().AccHash, peers)
 
 		return
 	}

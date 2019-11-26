@@ -49,7 +49,7 @@ func (s *Synchronizer) doFastSync() {
 			s.fixPoint = fixPoint
 
 			//sync from break point or checkpoint
-			s.cp2fp.startTask(highestPoint.Height, highestPoint.Hash, highestPoint.AccHash, honestPeers)
+			go s.cp2fp.startTask(highestPoint.Height, highestPoint.Hash, highestPoint.AccHash, honestPeers)
 
 			s.fastSyncFinishedCh <- struct{}{}
 			return
