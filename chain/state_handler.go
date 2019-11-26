@@ -78,6 +78,7 @@ func (bc *BlockChain) GetPrePackerInfoByIndex(headBlockWhenPacking *types.Block,
 
 	packerInfo := stateDb.GetPackerInfo(index)
 	if packerInfo == nil {
+		bc.logger.Info("packer info not found", "block", block.FullHash())
 		return nil, nil, ErrPackerInfoNotFound
 	}
 	return packerInfo, block, nil

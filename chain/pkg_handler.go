@@ -55,6 +55,7 @@ func (bc *BlockChain) VerifyTxPackage(pkg *types.TxPackage) error {
 
 	blockWhenPacking := bc.GetBlock(pkg.BlockFullHash())
 	if blockWhenPacking == nil {
+		bc.logger.Error("block not found when verify tx", "blockHash", pkg.BlockFullHash(), "pkgHash", pkg.Hash())
 		// put into future map
 		bc.addFutureBlockTxPackage(pkg.BlockFullHash(), pkg)
 		// return a special error to catch

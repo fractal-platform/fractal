@@ -326,7 +326,7 @@ func (s *Synchronizer) findAndCheckMainChain(interHashesMap map[string]protocol.
 
 	bestPeer := getBestPeerByHead(leftPeers)
 	//check main chain
-	check, errPeers, err := s.doSyncAndCheckFixPoint(leftPeers, bestPeer, blockSyncHashList, protocol.HashElem{}, true)
+	check, errPeers, err := s.syncFixPointAndBest(leftPeers, bestPeer, blockSyncHashList, protocol.HashElem{}, true)
 	if err != nil || !check || (len(peers)-len(errPeers) < comPreCount) {
 		s.log.Error("do fast sync checkMainChain failed", "err", err, "check", check)
 		for _, peer := range errPeers {
