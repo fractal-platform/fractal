@@ -181,19 +181,25 @@ func (s *stateObject) empty() bool {
 type Account struct {
 	TxNonceSet      nonces.NonceSet
 	PackageNonceSet nonces.NonceSet
-	Balance         *big.Int
-	Root            common.Hash
-	CodeHash        []byte
+
+	Balance       *big.Int
+	LockedBalance *big.Int
+	LockToRound   uint64 // time uint(100ms): same to the "Round" in block
+
+	Root     common.Hash
+	CodeHash []byte
 
 	ContractOwner common.Address
 }
 
 type AccountForStorage struct {
-	Code       string         `json:"code,omitempty"`
-	Storage    Storage        `json:"storage,omitempty"`
-	Balance    *big.Int       `json:"balance" gencodec:"required"`
-	PrivateKey []byte         `json:"secretKey,omitempty"` // for tests
-	Owner      common.Address `json:"owner,omitempty"`
+	Code          string         `json:"code,omitempty"`
+	Storage       Storage        `json:"storage,omitempty"`
+	Balance       *big.Int       `json:"balance" gencodec:"required"`
+	LockedBalance *big.Int       `json:"lockedBalance" gencodec:"required"`
+	LockToRound   uint64         `json:"lockToRound" gencodec:"required"`
+	PrivateKey    []byte         `json:"secretKey,omitempty"` // for tests
+	Owner         common.Address `json:"owner,omitempty"`
 }
 
 // newObject creates a state object.
@@ -201,6 +207,9 @@ func newObject(db *StateDB, address common.Address, data Account) *stateObject {
 	tmpData := data
 	if data.Balance == nil {
 		tmpData.Balance = new(big.Int)
+	}
+	if data.LockedBalance == nil {
+		tmpData.LockedBalance = new(big.Int)
 	}
 	if data.CodeHash == nil {
 		tmpData.CodeHash = emptyCodeHash
@@ -429,6 +438,19 @@ func (self *stateObject) setBalance(amount *big.Int) {
 	self.data.Balance = amount
 }
 
+// only set in genesis block when init
+func (self *stateObject) setBalanceLock(amount *big.Int, lockToRound uint64) {
+	// The locked balance cannot exceed the total balance
+	if amount == nil {
+		amount = common.Big0
+	}
+	if amount.Cmp(self.data.Balance) > 0 {
+		amount = new(big.Int).Set(self.data.Balance)
+	}
+	self.data.LockedBalance = amount
+	self.data.LockToRound = lockToRound
+}
+
 func (self *stateObject) deepCopy(db *StateDB) *stateObject {
 	stateObject := newObject(db, self.address, self.data)
 	if self.trie != nil {
@@ -506,6 +528,14 @@ func (self *stateObject) CodeHash() []byte {
 
 func (self *stateObject) Balance() *big.Int {
 	return self.data.Balance
+}
+
+func (self *stateObject) LockedBalance() *big.Int {
+	return self.data.LockedBalance
+}
+
+func (self *stateObject) LockToRound() uint64 {
+	return self.data.LockToRound
 }
 
 func (self *stateObject) Nonce() uint64 {

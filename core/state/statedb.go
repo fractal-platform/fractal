@@ -189,6 +189,22 @@ func (self *StateDB) GetBalance(addr common.Address) *big.Int {
 	return common.Big0
 }
 
+func (self *StateDB) GetTradableBalance(addr common.Address, currentRound uint64) *big.Int {
+	stateObject := self.getStateObject(addr)
+	if stateObject != nil {
+		balance := stateObject.Balance()
+		lockedBalance := stateObject.LockedBalance()
+		lockedToRound := stateObject.LockToRound()
+
+		if lockedToRound < currentRound {
+			return balance
+		} else {
+			return new(big.Int).Sub(balance, lockedBalance)
+		}
+	}
+	return common.Big0;
+}
+
 func (self *StateDB) GetNonce(addr common.Address) uint64 {
 	stateObject := self.getStateObject(addr)
 	if stateObject != nil {
@@ -411,6 +427,14 @@ func (self *StateDB) SetBalance(addr common.Address, amount *big.Int) {
 	}
 }
 
+// Only set in genesis block when init. Must set total balance first.
+func (self *StateDB) SetBalanceLock(addr common.Address, amount *big.Int, lockToRound uint64) {
+	stateObject := self.GetOrNewStateObject(addr)
+	if stateObject != nil {
+		stateObject.setBalanceLock(amount, lockToRound)
+	}
+}
+
 func (self *StateDB) SetCode(addr common.Address, code []byte) {
 	stateObject := self.GetOrNewStateObject(addr)
 	if stateObject != nil {
@@ -449,6 +473,7 @@ func (self *StateDB) Suicide(addr common.Address) bool {
 	})
 	stateObject.markSuicided()
 	stateObject.data.Balance = new(big.Int)
+	stateObject.data.LockedBalance = new(big.Int)
 
 	return true
 }
@@ -797,6 +822,8 @@ func (s *StateDB) DumpAllState(path string) {
 		}
 
 		account.Balance = obj.Balance()
+		account.LockedBalance = obj.LockedBalance()
+		account.LockToRound = obj.LockToRound()
 		account.Owner = obj.ContractOwner()
 		account.Storage = make(map[StorageKey][]byte)
 

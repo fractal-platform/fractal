@@ -173,4 +173,5 @@ type BlockChain interface {
 
 type StateDB interface {
 	GetBalance(addr common.Address) *big.Int
+	GetTradableBalance(addr common.Address, currentRound uint64) *big.Int
 }

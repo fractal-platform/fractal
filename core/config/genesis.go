@@ -21,7 +21,7 @@ import (
 	"github.com/fractal-platform/fractal/rlp"
 )
 
-var DefaultGenesisRound = uint64(time.Date(2019, 12, 1, 0, 0, 0, 0, time.UTC).Unix())
+var DefaultGenesisRound = uint64(time.Date(2020, 4, 20, 0, 0, 0, 0, time.UTC).Unix() * params.RoundsPerSecond)
 
 // GenesisMismatchError raised when stored genesis block conflicts with the input genesis config
 type GenesisMismatchError struct {
@@ -114,6 +114,7 @@ func (g *Genesis) ToBlock(db dbwrapper.Database) *types.Block {
 	statedb, _ := state.New(common.Hash{}, state.NewDatabase(db))
 	for addr, account := range g.Alloc {
 		statedb.AddBalance(addr, account.Balance)
+		statedb.SetBalanceLock(addr, account.LockedBalance, account.LockToRound)
 		//log.Info("genesis","addr",addr,"balance",account.Balance)
 		code, _ := hexutil.Decode(account.Code)
 		statedb.SetCode(addr, code)
@@ -199,11 +200,13 @@ func SetupGenesisBlock(db dbwrapper.Database, genesis *Genesis) (common.Hash, er
 }
 
 type balanceAllocStruct struct {
-	Addr    *big.Int
-	Balance *big.Int
-	Code    string
-	Owner   common.Address
-	Storage state.Storage
+	Addr          *big.Int
+	Balance       *big.Int
+	LockedBalance *big.Int
+	LockToRound   uint64
+	Code          string
+	Owner         common.Address
+	Storage       state.Storage
 }
 
 func decodePreAlloc(data string) GenesisAlloc {
@@ -214,10 +217,12 @@ func decodePreAlloc(data string) GenesisAlloc {
 	ga := make(GenesisAlloc, len(p))
 	for _, account := range p {
 		ga[common.BigToAddress(account.Addr)] = GenesisAccount{
-			Balance: account.Balance,
-			Code:    account.Code,
-			Owner:   account.Owner,
-			Storage: account.Storage,
+			Balance:       account.Balance,
+			LockedBalance: account.LockedBalance,
+			LockToRound:   account.LockToRound,
+			Code:          account.Code,
+			Owner:         account.Owner,
+			Storage:       account.Storage,
 		}
 	}
 	return ga

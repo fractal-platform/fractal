@@ -560,7 +560,7 @@ func (s *TxPoolAPI) Call(args SendTxArgs) (CallResult, error) {
 	coinBase := s.ftl.Coinbase()
 	stateDb.Prepare(common.Hash{}, 0, 0)
 	callbackParamKey := wasm.GetGlobalRegisterParam().RegisterParam(stateDb, block)
-	_, useGas, wasmFailed, err := txexec.WasmApplyMessage(prevStateDb, stateDb, msg, gp, s.ftl.BlockChain().GetChainConfig().MaxNonceBitLength, coinBase, callbackParamKey)
+	_, useGas, wasmFailed, err := txexec.WasmApplyMessage(prevStateDb, stateDb, block.Header.Round, msg, gp, s.ftl.BlockChain().GetChainConfig().MaxNonceBitLength, coinBase, callbackParamKey)
 	wasm.GetGlobalRegisterParam().UnRegisterParam(callbackParamKey)
 	if err != nil {
 		if wasmFailed {

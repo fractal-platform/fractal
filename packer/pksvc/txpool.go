@@ -58,6 +58,7 @@ func (q *indexQueue) pushUnsafe(tx *types.Transaction) error {
 	q.index[tx.PackingHash(q.txSigner)] = tx
 	return nil
 }
+
 //
 //func (q *indexQueue) pop() *types.Transaction {
 //	q.mu.Lock()
@@ -182,7 +183,9 @@ func (pool *txPool) validate(tx *types.Transaction) error {
 	if err != nil {
 		return err
 	}
-	if currentState.GetBalance(from).Cmp(tx.Cost()) < 0 {
+	
+	currentBlock := pool.chain.CurrentBlock()
+	if currentState.GetTradableBalance(from, currentBlock.Header.Round).Cmp(tx.Cost()) < 0 {
 		return transaction.ErrInsufficientFunds
 	}
 
@@ -194,7 +197,7 @@ func (pool *txPool) validate(tx *types.Transaction) error {
 		return transaction.ErrIntrinsicGas
 	}
 
-	if pool.chain.CurrentBlock().Header.GasLimit < tx.Gas() {
+	if currentBlock.Header.GasLimit < tx.Gas() {
 		return transaction.ErrGasLimit
 	}
 

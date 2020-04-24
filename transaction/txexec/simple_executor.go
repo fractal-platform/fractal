@@ -153,7 +153,7 @@ func (e *SimpleExecutor) ApplyTransaction(prevStateDb *state.StateDB, state *sta
 	if err != nil {
 		return nil, 0, common.Address{}, err
 	}
-	_, useGas, err := SimpleApplyMessage(prevStateDb, state, msg, gp, e.maxBitLength, block.Header.Coinbase, callbackParamKey)
+	_, useGas, err := SimpleApplyMessage(prevStateDb, state, block.Header.Round, msg, gp, e.maxBitLength, block.Header.Coinbase, callbackParamKey)
 
 	if err != nil {
 		log.Info("ApplyTransaction err", "from", msg.From(), "to", msg.To(), "nonce", msg.Nonce(), "hash", tx.Hash(), "err", err)
@@ -165,12 +165,12 @@ func (e *SimpleExecutor) ApplyTransaction(prevStateDb *state.StateDB, state *sta
 	return nil, useGas, msg.From(), nil
 }
 
-func SimpleApplyMessage(prevStateDb *state.StateDB, statedb *state.StateDB, msg Message, gp *types.GasPool, maxBitLength uint64, coinbase common.Address, callbackParamKey uint64) ([]byte, uint64, error) {
+func SimpleApplyMessage(prevStateDb *state.StateDB, statedb *state.StateDB, round uint64, msg Message, gp *types.GasPool, maxBitLength uint64, coinbase common.Address, callbackParamKey uint64) ([]byte, uint64, error) {
 	nonceSet := statedb.TxNonceSet(msg.From())
 	if nonceSet == nil {
 		log.Error("SimpleApplyMessage: cannot find tx nonce set", "addr", msg.From())
 		return nil, 0, ErrNonceSetNotFound
 	}
 
-	return NewStateTransition(prevStateDb, statedb, msg, gp, nonceSet, maxBitLength, callbackParamKey).SimpleTransitionDb(coinbase)
+	return NewStateTransition(prevStateDb, statedb, round, msg, gp, nonceSet, maxBitLength, callbackParamKey).SimpleTransitionDb(coinbase)
 }
