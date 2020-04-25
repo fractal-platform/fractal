@@ -202,8 +202,13 @@ func AddLog(callbackParamKey uint64, address common.Address, topicSlice []byte, 
 
 func Transfer(callbackParamKey uint64, from common.Address, to common.Address, amount uint64, remainedGas *uint64) int {
 	s := GetGlobalRegisterParam().getState(callbackParamKey)
+	b := GetGlobalRegisterParam().getBlock(callbackParamKey)
 	if s == nil {
 		log.Error("Transfer error: state is nil")
+		return -1
+	}
+	if b == nil {
+		log.Error("Transfer error: block is nil")
 		return -1
 	}
 	value := new(big.Int).SetUint64(amount)
@@ -214,8 +219,9 @@ func Transfer(callbackParamKey uint64, from common.Address, to common.Address, a
 		return -1
 	}
 	// check transfer
-	if s.GetBalance(from).Cmp(value) < 0 {
-		log.Error("Transfer error: insufficient balance")
+	tradableBalance := s.GetTradableBalance(from, b.Header.Round)
+	if tradableBalance.Cmp(value) < 0 {
+		log.Error("Transfer error: insufficient balance", "tradableBalance", tradableBalance.String())
 		return -1
 	}
 

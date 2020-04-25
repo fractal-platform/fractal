@@ -24,11 +24,13 @@ func encodePreAlloc(data GenesisAlloc) string {
 	for addr, account := range data {
 		addrInt := new(big.Int)
 		p[index] = balanceAllocStruct{
-			Addr:    addrInt.SetBytes(addr.Bytes()),
-			Balance: account.Balance,
-			Owner:   account.Owner,
-			Code:    account.Code,
-			Storage: account.Storage,
+			Addr:          addrInt.SetBytes(addr.Bytes()),
+			Balance:       account.Balance,
+			LockedBalance: account.LockedBalance,
+			LockToRound:   account.LockToRound,
+			Owner:         account.Owner,
+			Code:          account.Code,
+			Storage:       account.Storage,
 		}
 		index++
 	}
@@ -50,12 +52,22 @@ func TestPreAlloc(t *testing.T) {
 		state.GetStorageKey(1, []byte{1}): []byte{0xFF},
 	}
 	var data = GenesisAlloc{
-		common.BytesToAddress(addrByte1): {Balance: big.NewInt(5 * 1e14)},
-		common.BytesToAddress(addrByte2): {Balance: big.NewInt(0)},
+		common.BytesToAddress(addrByte1): {
+			Balance:       big.NewInt(5 * 1e14),
+			LockedBalance: big.NewInt(5 * 1e14),
+			LockToRound:   1,
+		},
+		common.BytesToAddress(addrByte2): {
+			Balance:       big.NewInt(0),
+			LockedBalance: big.NewInt(0),
+			LockToRound:   0,
+		},
 		common.BytesToAddress(addrByte3): {
-			Balance: big.NewInt(0),
-			Code:    code1,
-			Storage: storage1,
+			Balance:       big.NewInt(0),
+			LockedBalance: big.NewInt(0),
+			LockToRound:   0,
+			Code:          code1,
+			Storage:       storage1,
 		},
 	}
 
@@ -75,12 +87,22 @@ func TestMarshalGenesisAlloc(t *testing.T) {
 		state.GetStorageKey(1, []byte{1}): []byte{0xFF},
 	}
 	var data = GenesisAlloc{
-		common.BytesToAddress(addrByte1): {Balance: big.NewInt(5 * 1e14)},
-		common.BytesToAddress(addrByte2): {Balance: big.NewInt(0)},
+		common.BytesToAddress(addrByte1): {
+			Balance:       big.NewInt(5 * 1e14),
+			LockedBalance: big.NewInt(5 * 1e14),
+			LockToRound:   1,
+		},
+		common.BytesToAddress(addrByte2): {
+			Balance:       big.NewInt(0),
+			LockedBalance: big.NewInt(0),
+			LockToRound:   0,
+		},
 		common.BytesToAddress(addrByte3): {
-			Balance: big.NewInt(0),
-			Code:    code1,
-			Storage: storage1,
+			Balance:       big.NewInt(0),
+			LockedBalance: big.NewInt(0),
+			LockToRound:   0,
+			Code:          code1,
+			Storage:       storage1,
 		},
 	}
 

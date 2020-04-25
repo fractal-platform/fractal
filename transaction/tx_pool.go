@@ -76,7 +76,9 @@ func (h *TxHelper) Validate(p pool.Pool, ele pool.Element, currentState pool.Sta
 		return ErrNegativeValue
 	}
 
-	if currentState.GetBalance(from).Cmp(tx.Cost()) < 0 {
+	currentBlock := blockChain.CurrentBlock()
+
+	if currentState.GetTradableBalance(from, currentBlock.Header.Round).Cmp(tx.Cost()) < 0 {
 		return ErrInsufficientFunds
 	}
 
@@ -88,7 +90,7 @@ func (h *TxHelper) Validate(p pool.Pool, ele pool.Element, currentState pool.Sta
 		return ErrIntrinsicGas
 	}
 
-	if blockChain.CurrentBlock().Header.GasLimit < tx.Gas() {
+	if currentBlock.Header.GasLimit < tx.Gas() {
 		return ErrGasLimit
 	}
 

@@ -38,6 +38,7 @@ type StateTransition struct {
 	gp          *types.GasPool
 	msg         Message
 	gas         uint64
+	round       uint64
 	gasPrice    *big.Int
 	initialGas  uint64
 	value       *big.Int
@@ -98,10 +99,11 @@ func IntrinsicGas(data []byte, contractCreation bool) (uint64, error) {
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransition(prevStateDb *state.StateDB, statedb *state.StateDB, msg Message, gp *types.GasPool, nonceSet *nonces.NonceSet, maxBitLength uint64, callbackParamKey uint64) *StateTransition {
+func NewStateTransition(prevStateDb *state.StateDB, statedb *state.StateDB, round uint64, msg Message, gp *types.GasPool, nonceSet *nonces.NonceSet, maxBitLength uint64, callbackParamKey uint64) *StateTransition {
 	return &StateTransition{
 		gp:               gp,
 		msg:              msg,
+		round:            round,
 		gasPrice:         msg.GasPrice(),
 		value:            msg.Value(),
 		data:             msg.Data(),
@@ -132,7 +134,7 @@ func (st *StateTransition) useGas(amount uint64) error {
 
 func (st *StateTransition) buyGas() error {
 	mgval := new(big.Int).Mul(new(big.Int).SetUint64(st.msg.Gas()), st.gasPrice)
-	if st.state.GetBalance(st.msg.From()).Cmp(mgval) < 0 {
+	if st.state.GetTradableBalance(st.msg.From(), st.round).Cmp(mgval) < 0 {
 		//log.Warn("gas check", "balance", st.state.GetBalance(st.msg.From()), "mgval", mgval, "gasPrice", st.gasPrice)
 		return ErrInsufficientBalanceForGas
 	}
@@ -180,7 +182,7 @@ func (st *StateTransition) preCheck() error {
 		return err
 	}
 
-	if !CanTransfer(st.state, st.msg.From(), st.value) {
+	if !CanTransfer(st.state, st.msg.From(), st.value, st.round) {
 		return ErrInsufficientBalance
 	}
 

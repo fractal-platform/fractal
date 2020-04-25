@@ -199,7 +199,7 @@ func (e *WasmExecutor) ApplyTransaction(prevStateDb *state.StateDB, state *state
 		return nil, 0, common.Address{}, err
 	}
 	//log.Info("Apply Transaction", "from", msg.From(), "to", msg.To(), "hash", tx.Hash(), "nonce", msg.Nonce(), "data", msg.Data())
-	_, useGas, wasmFailed, err := WasmApplyMessage(prevStateDb, state, msg, gp, maxBitLength, block.Header.Coinbase, callbackParamKey)
+	_, useGas, wasmFailed, err := WasmApplyMessage(prevStateDb, state, block.Header.Round, msg, gp, maxBitLength, block.Header.Coinbase, callbackParamKey)
 
 	if err != nil {
 		if wasmFailed {
@@ -226,14 +226,14 @@ func (e *WasmExecutor) ApplyTransaction(prevStateDb *state.StateDB, state *state
 	return receipt, useGas, msg.From(), nil
 }
 
-func WasmApplyMessage(prevStateDb *state.StateDB, statedb *state.StateDB, msg Message, gp *types.GasPool, maxBitLength uint64, coinbase common.Address, callbackParamKey uint64) ([]byte, uint64, bool, error) {
+func WasmApplyMessage(prevStateDb *state.StateDB, statedb *state.StateDB, round uint64, msg Message, gp *types.GasPool, maxBitLength uint64, coinbase common.Address, callbackParamKey uint64) ([]byte, uint64, bool, error) {
 	nonceSet := statedb.TxNonceSet(msg.From())
 	if nonceSet == nil {
 		log.Error("WasmApplyMessage: cannot find tx nonce set", "addr", msg.From())
 		return nil, 0, false, ErrNonceSetNotFound
 	}
 
-	return NewStateTransition(prevStateDb, statedb, msg, gp, nonceSet, maxBitLength, callbackParamKey).WasmTransitionDb(coinbase)
+	return NewStateTransition(prevStateDb, statedb, round, msg, gp, nonceSet, maxBitLength, callbackParamKey).WasmTransitionDb(coinbase)
 }
 
 func CallWasmContract(codePointer unsafe.Pointer, codeLength int, actionPointer unsafe.Pointer, actionLength int, fromAddrPointer unsafe.Pointer, toAddrPointer unsafe.Pointer, ownerPointer unsafe.Pointer, amount uint64, remainedGas *uint64, callbackParamKey uint64) int {

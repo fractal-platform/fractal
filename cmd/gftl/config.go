@@ -131,7 +131,10 @@ func makeConfigNode(ctx *cli.Context) *config.Config {
 	if genesisAllocFile := ctx.GlobalString(genesisAllocFlag.Name); genesisAllocFile != "" {
 		if data, err := ioutil.ReadFile(genesisAllocFile); err == nil {
 			log.Info("load genesis alloc file success", "fileName", genesisAllocFile)
-			json.Unmarshal(data, &cfg.Genesis.Alloc)
+			unmarshalErr := json.Unmarshal(data, &cfg.Genesis.Alloc)
+			if unmarshalErr != nil {
+				log.Error("Unmarshal genesis alloc file error", "err", unmarshalErr)
+			}
 		}
 	}
 

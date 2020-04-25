@@ -626,7 +626,7 @@ func (w *worker) flattenTransactionsByPrice(block *types.Block, queue map[common
 			}
 			balance, ok := balanceCache[address]
 			if !ok {
-				balance = stateDb.GetBalance(address)
+				balance = stateDb.GetTradableBalance(address, block.Header.Round)
 				balanceCache[address] = balance
 			}
 			return nonceSet, balance
