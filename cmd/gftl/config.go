@@ -191,6 +191,16 @@ func setBootstrapNodes(ctx *cli.Context, cfg *p2p.Config) {
 	} else if ctx.GlobalIsSet(testnet3Flag.Name) {
 		node, _ := discover.ParseNode("enode://c063c4e9fcd190328a7f010d9e6474c8588c2175c73c277091d5ff3cc5a136c849299817fecb2bfb33e273c10c77d457c513436a8209d7623e62b83fa9b1c7ab@210.22.171.162:50004")
 		cfg.BootstrapNodes = append(cfg.BootstrapNodes, node)
+	} else {
+		// mainnet
+		node0, _ := discover.ParseNode("enode://e17397cc0b08a4bf92dfc0ea12ce370d22082ce26c823242b00495d879b82aee606e0e9dcb9739695a0e8b5f4eb57c3e71ba58b86a13a6e3926bf41eb285d069@3.226.27.211:60006")
+		node1, _ := discover.ParseNode("enode://50ae85e040f6b7ba0f61d31fe7f242602bb85a65b5bd5a3801470c3849f056ff31bf34b66dcef3ef60ddebf92831de7ec8f5bc7b6764136ac110ee6313a1933c@34.196.83.105:60006")
+		node2, _ := discover.ParseNode("enode://a441c0048813a0ee6927752de8fde19a410b04671ac866c75a96f02a3ed91e8f8955c0f22004d5781f2e7fd9d9ce0a35be33495ecd5b2cf918a73146d906a105@35.170.127.58:60006")
+		node3, _ := discover.ParseNode("enode://53ac135a6392f4e03ddaf530ba697d179912683394840642c5b74f66cd9d02100d322b16b17d8bc1b15bef1a57a664e10d765030b90bae8121257442f0b4872a@52.55.182.221:60006")
+		cfg.BootstrapNodes = append(cfg.BootstrapNodes, node0)
+		cfg.BootstrapNodes = append(cfg.BootstrapNodes, node1)
+		cfg.BootstrapNodes = append(cfg.BootstrapNodes, node2)
+		cfg.BootstrapNodes = append(cfg.BootstrapNodes, node3)
 	}
 }
 
