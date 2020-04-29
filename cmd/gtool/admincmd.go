@@ -38,7 +38,7 @@ var (
 			},
 			{
 				Name:   "genminingkey",
-				Usage:  "Generate Mining Key fro Current Address",
+				Usage:  "Generate Mining Key from Current Address",
 				Action: generateMiningKey,
 				Flags: []cli.Flag{
 					RpcFlag,

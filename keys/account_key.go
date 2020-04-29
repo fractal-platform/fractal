@@ -2,12 +2,13 @@ package keys
 
 import (
 	"encoding/json"
+	"io/ioutil"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/crypto"
 	"github.com/fractal-platform/fractal/utils/log"
 	"github.com/pborman/uuid"
-	"io/ioutil"
 )
 
 type AccountKey struct {
@@ -73,5 +74,42 @@ func CreateAccountKey(keyfile string, password string) *AccountKey {
 	return &AccountKey{
 		Address: address,
 		PrivKey: pri,
+	}
+}
+
+func ImportAccountKey(privateKeyStr string, keyfile string, password string) *AccountKey {
+	privateKeyByte, err := hexutil.Decode(privateKeyStr)
+	if err != nil {
+		log.Error("Decode private key failed", "err", err.Error())
+		return nil
+	}
+
+	privateKey, err := crypto.UnmarshalPrivKey(crypto.ECDSA, privateKeyByte)
+	if err != nil {
+		log.Error("Unmarshal private key failed", "err", err.Error())
+		return nil
+	}
+	address := privateKey.Public().ToAddress()
+
+	kjson := new(keyfileJSON)
+	kjson.Version = version
+	kjson.ID = uuid.NewUUID().String()
+	kjson.Address = hexutil.Encode(address[:])
+	kjson.Crypto, err = EncryptData(privateKeyByte, []byte(password), scryptN, scryptP)
+	if err != nil {
+		log.Error("Encrypt data failed", "err", err.Error())
+		return nil
+	}
+
+	bytes, err := json.Marshal(kjson)
+	if err != nil {
+		log.Error("Marshal data failed", "err", err.Error())
+		return nil
+	}
+	ioutil.WriteFile(keyfile, bytes, 0644)
+
+	return &AccountKey{
+		Address: address,
+		PrivKey: privateKey,
 	}
 }
