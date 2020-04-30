@@ -29,6 +29,11 @@ var (
 		Usage: "The address for keys",
 		Value: "",
 	}
+	privateKeyFlag = cli.StringFlag{
+		Name:  "pri",
+		Usage: "The private key",
+		Value: "",
+	}
 
 	// for genesis param
 	GenesisStakeFlag = cli.Uint64Flag{

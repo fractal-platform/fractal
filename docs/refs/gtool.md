@@ -29,7 +29,7 @@
     SUBCOMMANDS:
          info          Show Fractal Node Info
          enode         Show Fractal Node Enode Address
-         genminingkey  Generate Mining Key fro Current Address
+         genminingkey  Generate Mining Key from Current Address
 
     OPTIONS:
        --rpc value   rpc service address
@@ -87,6 +87,8 @@
          newminingkey  New Mining Key
          regminingkey  Register Mining Key
          newpackerkey  New Packer Key
+         import        Import Private Key
+         export        Export Private Key
 
     OPTIONS:
        --keys value     The Folder for all the key files
@@ -94,6 +96,7 @@
        --addr value     The address for keys
        --rpc value      rpc service address
        --chainid value  chain id (default: 0)
+       --pri value      The private key
        --help, -h       show help
 ```
 

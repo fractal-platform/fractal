@@ -3,6 +3,11 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"gopkg.in/urfave/cli.v1"
+	"math/big"
+	"os"
+	"path"
+
 	"github.com/fractal-platform/fractal/common"
 	"github.com/fractal-platform/fractal/common/hexutil"
 	"github.com/fractal-platform/fractal/core/types"
@@ -13,10 +18,6 @@ import (
 	"github.com/fractal-platform/fractal/utils"
 	"github.com/fractal-platform/fractal/utils/log"
 	"github.com/pkg/errors"
-	"gopkg.in/urfave/cli.v1"
-	"math/big"
-	"os"
-	"path"
 )
 
 var (
@@ -34,6 +35,7 @@ var (
 			AddressFlag,
 			RpcFlag,
 			ChainIdFlag,
+			privateKeyFlag,
 		},
 		Subcommands: []cli.Command{
 			{
@@ -83,6 +85,16 @@ var (
 					KeyFolderFlag,
 					PasswordFlag,
 					AddressFlag,
+				},
+			},
+			{
+				Name:   "import",
+				Usage:  "Import Private Key",
+				Action: importPrivateKey,
+				Flags: []cli.Flag{
+					KeyFolderFlag,
+					PasswordFlag,
+					privateKeyFlag,
 				},
 			},
 			{
@@ -298,6 +310,37 @@ func newPackerKey(ctx *cli.Context) error {
 	pub := packerKeyManager.CreateKey(addr)
 	fmt.Printf("New Packer Key Address: %s\n", hexutil.Encode(addr[:]))
 	fmt.Printf("New Packer Public Key: %s\n", hexutil.Encode(pub.Marshal()[:]))
+
+	return nil
+}
+
+func importPrivateKey(ctx *cli.Context) error {
+	initLogger(ctx)
+
+	folder := ctx.GlobalString(KeyFolderFlag.Name)
+	password := ctx.GlobalString(PasswordFlag.Name)
+	privateKeyStr := ctx.GlobalString(privateKeyFlag.Name)
+
+	if folder == "" {
+		return errors.New("key folder must be set")
+	}
+	if password == "" {
+		return errors.New("password must be set")
+	}
+	if privateKeyStr == "" {
+		return errors.New("private key must be set")
+	}
+
+	// create if not exists
+	if _, err := os.Stat(folder); os.IsNotExist(err) {
+		os.MkdirAll(folder, 0755)
+	} else {
+		return errors.New("key already exist: " + folder)
+	}
+
+	accountKeyFile := path.Join(folder, "account.json")
+	accountKey := keys.ImportAccountKey(privateKeyStr, accountKeyFile, password)
+	fmt.Printf("Import succeeded.\ndAccount Key Address: %s\n", hexutil.Encode(accountKey.Address[:]))
 
 	return nil
 }
