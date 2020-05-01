@@ -21,7 +21,7 @@ import (
 	"github.com/fractal-platform/fractal/rlp"
 )
 
-var DefaultGenesisRound = uint64(time.Date(2020, 4, 25, 0, 0, 0, 0, time.UTC).Unix() * params.RoundsPerSecond)
+var DefaultGenesisRound = uint64(time.Date(2020, 5, 1, 13, 0, 0, 0, time.UTC).Unix() * params.RoundsPerSecond)
 
 // GenesisMismatchError raised when stored genesis block conflicts with the input genesis config
 type GenesisMismatchError struct {
@@ -67,7 +67,7 @@ func DefaultMainnetGenesisBlock() *Genesis {
 		Round:      DefaultGenesisRound,
 		PubKey:     []byte{},
 		Sig:        []byte{},
-		Difficulty: new(big.Int).Mul(big.NewInt(1e17), big.NewInt(150)),
+		Difficulty: new(big.Int).Mul(big.NewInt(3e17), big.NewInt(200)),
 		Alloc:      decodePreAlloc(mainnetAllocData),
 	}
 }
